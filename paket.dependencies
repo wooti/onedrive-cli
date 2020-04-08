@@ -1,0 +1,10 @@
+source https://api.nuget.org/v3/index.json
+
+storage: none
+framework: netcore3.1
+
+nuget Microsoft.Graph
+nuget FSharp.Core
+nuget Microsoft.Graph.Auth
+nuget Microsoft.Identity.Client
+nuget TaskBuilder.fs
