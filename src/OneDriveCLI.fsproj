@@ -8,6 +8,8 @@
     <OutputPath>../build/</OutputPath>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="Logging.fs" />
+    <Compile Include="CommandLine.fs" />
     <Compile Include="TokenSaver.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>

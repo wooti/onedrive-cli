@@ -8,3 +8,4 @@ nuget FSharp.Core
 nuget Microsoft.Graph.Auth
 nuget Microsoft.Identity.Client
 nuget TaskBuilder.fs
+nuget Argu
