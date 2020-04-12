@@ -26,36 +26,23 @@ let main argv =
         Threading.Tasks.Task.CompletedTask
 
     // Create an authentication provider by passing in a client application and graph scopes.
-    let authProvider = new DeviceCodeProvider(application, ["files.read.all"], (fun dcr -> someCallback dcr));
+    let authProvider = new DeviceCodeProvider(application, ["files.read.all"], (fun dcr -> someCallback dcr))
     // Create a new instance of GraphServiceClient with the authentication provider.
-    let client = new GraphServiceClient(authProvider);
+    let client = new GraphServiceClient(authProvider)
 
     // Graph 1.0 REST API: https://docs.microsoft.com/en-us/graph/api/resources/onedrive?view=graph-rest-1.0
     // Graph SDK .NET: https://github.com/microsoftgraph/msgraph-sdk-dotnet
 
-    let drive = task {
-        let! drive = client.Me.Drive.Request().GetAsync()
+    let api = OneDriveAPI.build client
 
-        log.Debug "Drive details Name = %s, Type = %s" drive.Name drive.DriveType
-        log.Info "Size = %O" drive.Quota.Total
+    async {
+        let! drive = api.GetDrives ()
+        log.Info "Drive details Name = %s, Id = %s" drive.Name drive.Id
 
-        let listChildren (item : DriveItem) =
-            client.Drives.Item(drive.Id).Items.Item(item.Id).Children.Request().GetAsync()
-
-        let! root = client.Drives.Item(drive.Id).Root.Request().GetAsync()
-
-        let! rootItems = listChildren root
-
-        for item in rootItems do
-            log.Debug "%s - %d" item.Name item.Folder.ChildCount.Value
-
-
-
-        //let! drives = client.Drives.Request().GetAsync()
-
-        ()
+        let! items = api.GetAllItems drive
+        return items
     } 
+    |> Async.RunSynchronously
+    |> ignore
     
-    drive.Result
-
     0
