@@ -19,9 +19,6 @@ type private CliArguments =
     | [<Mandatory; Unique>] Direction of Direction
     | [<Unique>] Local of string
     | [<Unique>] Remote of string
-  //| HashCompare
-  //| [<AltCommandLine("-i")>] IgnoreFile
-  //| MaxSize
     | [<AltCommandLine("-n")>] Dry_Run
     | [<AltCommandLine("-r")>] Recursive
     | [<AltCommandLine("-v")>] Verbose
