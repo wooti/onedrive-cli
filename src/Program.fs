@@ -14,7 +14,7 @@ let main argv =
     let args = {
         Direction = Up
         Local = Some "C:\\#sync"
-        Remote = Some "Sync"
+        Remote = None
         DryRun = true
         Recursive = true
         Verbose = true
@@ -48,63 +48,11 @@ let main argv =
     let api = OneDriveAPI.build client
 
     let hasher = Actors.Hasher ()
-    let processor = Actors.Something ()
+    let processor = Actors.Something api
 
     async {
         let! drive = api.GetDrive ()
         log.Info "Drive details Name = %s, Id = %s" drive.Name drive.Id
-
-        let rec processs (localFolder : LocalFolder option) (remoteFolder : RemoteFolder option) = 
-
-            let getLocalItems folder = 
-                let allFolders = 
-                    folder.DirectoryInfo.EnumerateDirectories ()
-                    |> Seq.map (fun s -> s.FullName, LocalItem.LocalFolder {DirectoryInfo = s})
-
-                let allFiles = 
-                    folder.DirectoryInfo.EnumerateFiles ()
-                    |> Seq.map (fun s -> s.FullName, LocalItem.LocalFile {FileInfo = s})
-
-                Seq.append allFolders allFiles
-
-            let getRemoteItems folder = async {
-                return!
-                    api.GetAllChildren folder
-                    |> Async.map (Seq.map (fun s -> s.Name, s))
-            }
-                
-            let local = localFolder |> Option.map getLocalItems |> Option.defaultValue Seq.empty
-            let remote = remoteFolder |> Option.map (getRemoteItems >> Async.RunSynchronously) |> Option.defaultValue Seq.empty
-                
-            let squash localItems remoteItems =
-                let local = localItems |> Seq.map (fun (k,v) -> k, Item.Local v)
-                let remote = remoteItems |> Seq.map (fun (k,v) -> k, Item.Remote v)
-
-                Seq.append local remote
-                |> Seq.groupBy fst
-                |> Seq.map (fun (_,v) -> v |> Seq.map snd |> Seq.fold (fun state item -> match item with Local l -> (Some l, snd state) | Remote r -> (fst state, Some r)) (None, None))
-                    
-            let proc (local,remote) = 
-                match local, remote with
-                | None, Some (RemoteFile file) -> 
-                    file |> RemoteItem.RemoteFile |> Diff.RemoteOnly |> processor.Notify
-                | None, Some (RemoteFolder folder) -> 
-                    processs None (Some folder)
-                | Some (LocalFile local), None -> 
-                    local |> LocalItem.LocalFile |> Diff.LocalOnly |> processor.Notify
-                | Some (LocalFolder local), None 
-                    -> processs (Some local) None
-                | Some (LocalFile localFile), Some (RemoteFile file) -> 
-                    localFile.FileInfo.Name |> Diff.Difference |> processor.Notify
-                    ()
-                | Some (LocalFolder localFolder), Some (RemoteFolder remoteFolder) -> 
-                    processs (Some localFolder) (Some remoteFolder)
-                | Some (LocalFolder _), Some (RemoteFile _)
-                | Some (LocalFile _), Some (RemoteFolder _) ->
-                    failwith "Item folder <-> file mismatch"
-                | None, None -> failwith "Impossible case"
-
-            squash local remote |> Seq.iter proc
 
         let localFolder = 
             args.Local 
@@ -117,8 +65,7 @@ let main argv =
             |> Option.map api.GetFolder
             |> Option.defaultValue (Async.retn drive.Root)
 
-        processs (Some localFolder) (Some remoteFolder)
-        return ()
+        processor.Start localFolder remoteFolder 20
     } 
     |> Async.RunSynchronously
     |> ignore
