@@ -4,75 +4,102 @@ open Microsoft.Graph
 open Domain
 
 type IOneDriveAPI = 
-    abstract member GetDrives : unit -> Async<Drive>
-    abstract member GetAllItems : Drive -> Async<Item>
+    abstract member GetDrive : unit -> Async<Drive>
+    abstract member GetFolder : string -> Async<RemoteFolder>
+    abstract member GetAllChildren : RemoteFolder -> Async<seq<RemoteItem>>
 
 let build (client : GraphServiceClient) = 
 
-    let toItemInfo (driveItem: Microsoft.Graph.DriveItem) = {
+    let toFolder (driveItem: Microsoft.Graph.DriveItem) = {
         Name = driveItem.Name
         ID = driveItem.Id
+        DriveID = driveItem.ParentReference.DriveId
         Path = driveItem.ParentReference.Path
-        Created = driveItem.CreatedDateTime.Value
-        Updated = driveItem.LastModifiedDateTime.Value
+        Created = driveItem.CreatedDateTime.Value.DateTime
+        Updated = driveItem.LastModifiedDateTime.Value.DateTime
     }
 
-    let toFileInfo (driveItem: Microsoft.Graph.DriveItem) = {
-        Size = driveItem.Size.Value
+    let toFile (driveItem: Microsoft.Graph.DriveItem) = {
+        ID = driveItem.Id
+        DriveID = driveItem.ParentReference.DriveId
+        Path = driveItem.ParentReference.Path
+        Name = driveItem.Name
+        Created = driveItem.CreatedDateTime.Value.DateTime
+        Updated = driveItem.LastModifiedDateTime.Value.DateTime
         SHA1 = driveItem.File.Hashes.Sha1Hash
+        Size = driveItem.Size.Value
     }
 
-    let toDrive (drive: Microsoft.Graph.Drive) = {
-        Name = drive.Name
-        Id = drive.Id
-        Type = drive.DriveType
-        Size = drive.Quota.Total.GetValueOrDefault()
-        Used = drive.Quota.Used.GetValueOrDefault()
+    let toPackage (driveItem: Microsoft.Graph.DriveItem) = {
+        ID = driveItem.Id
+        DriveID = driveItem.ParentReference.DriveId
+        Path = driveItem.ParentReference.Path
+        Name = driveItem.Name
+        Created = driveItem.CreatedDateTime.Value.DateTime
+        Updated = driveItem.LastModifiedDateTime.Value.DateTime
+        SHA1 = ""
+        Size = driveItem.Size.Value
     }
 
-    let getDrives = async {
-        let! drive = client.Me.Drive.Request().GetAsync() |> Async.AwaitTask
-        return drive |> toDrive
+    let getDrive = async {
+
+        let! drive =
+            client.Me.Drive.Request().GetAsync() 
+            |> Async.AwaitTask
+
+        let! rootFolder = 
+            client.Drives.Item(drive.Id).Root.Request().GetAsync() 
+            |> Async.AwaitTask
+            |> Async.map toFolder
+
+        return {
+            Name = drive.Name
+            Id = drive.Id
+            Type = drive.DriveType
+            Size = drive.Quota.Total.GetValueOrDefault()
+            Used = drive.Quota.Used.GetValueOrDefault()
+            Root = rootFolder
+        }
     }
 
-    let getAllItems drive = async {
+    let getAllItems folder = async {
 
-        let! rootItem = client.Drives.Item(drive.Id).Root.Request().GetAsync() |> Async.AwaitTask
-
-        let rec getChildren (item : DriveItem) = async {
-
-            let rec getAllPages (request : IDriveItemChildrenCollectionPage) = async {
-                let! remaining = async {
-                    match request.NextPageRequest with
-                    | null -> return Seq.empty
-                    | _ -> 
-                        let! nextPage = request.NextPageRequest.GetAsync() |> Async.AwaitTask
-                        return! getAllPages nextPage
-                }
-                return request.CurrentPage |> Seq.append remaining
+        let rec getAllPages (request : IDriveItemChildrenCollectionPage) = async {
+            let! remaining = async {
+                match request.NextPageRequest with
+                | null -> return Seq.empty
+                | _ -> 
+                    let! nextPage = request.NextPageRequest.GetAsync() |> Async.AwaitTask
+                    return! getAllPages nextPage
             }
-
-            let! children = client.Drives.Item(drive.Id).Items.Item(item.Id).Children.Request().GetAsync() |> Async.AwaitTask
-            let! allChildren = getAllPages children
-
-            return! allChildren |> Seq.map (function
-                | folder when folder.Folder <> null -> async {
-                    let! subChildren = getChildren folder
-                    return Item.Folder(folder |> toItemInfo, subChildren |> Seq.toList)}
-                | child when child.File <> null -> async {
-                    return Item.File(child |> toItemInfo, child |> toFileInfo)}
-                | child -> async {
-                    return Item.Package(child |> toItemInfo)}
-            )
-            |> Async.Parallel
+            return request.CurrentPage |> Seq.append remaining
         }
 
-        let! children = getChildren rootItem
-        return Item.Folder(rootItem |> toItemInfo, children |> Seq.toList)
+        let toRemoteItem (driveItem : DriveItem) = 
+
+            match driveItem with
+            | folder when folder.Folder <> null -> driveItem |> toFolder |> RemoteFolder
+            | child when child.File <> null -> driveItem |> toFile |> RemoteFile
+            | child when child.Package <> null -> driveItem |> toPackage |> RemoteFile
+            | child -> failwithf "Unknown DriveItem type for file %s in %s" child.Name child.ParentReference.Path
+
+        return!
+            client.Drives.Item(folder.DriveID).Items.Item(folder.ID).Children.Request().GetAsync() 
+            |> Async.AwaitTask
+            |> Async.bind getAllPages
+            |> Async.map (Seq.map toRemoteItem)
     }
-      
+
+    let getPathFolder path = async {
+        return!
+            client.Me.Drive.Root.ItemWithPath(path).Request().GetAsync()
+            |> Async.AwaitTask
+            |> Async.map toFolder
+    }
+
     { 
         new IOneDriveAPI with
-            member __.GetDrives () = getDrives
-            member __.GetAllItems drive = getAllItems drive
+            member __.GetDrive () = getDrive
+            member __.GetFolder path = getPathFolder path
+            member __.GetAllChildren folder = getAllItems folder
     }

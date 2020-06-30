@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "OneDriveCLI": {
+      "commandName": "Project",
+      "commandLineArgs": "--direction UP"
+    }
+  }
+}
