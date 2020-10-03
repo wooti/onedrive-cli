@@ -1,17 +1,14 @@
 ﻿module CommandLine
 
 open Argu
-
-type Direction =
-    | Up
-    | Down
+open Domain
 
 type Arguments = {
     Direction : Direction
     Local : string option
     Remote : string option
+    Threads : int option
     DryRun : bool
-    Recursive : bool
     Verbose : bool
 }
 
@@ -19,8 +16,8 @@ type private CliArguments =
     | [<Mandatory; Unique>] Direction of Direction
     | [<Unique>] Local of string
     | [<Unique>] Remote of string
+    | [<Unique; AltCommandLine("-t")>] Threads of int
     | [<AltCommandLine("-n")>] Dry_Run
-    | [<AltCommandLine("-r")>] Recursive
     | [<AltCommandLine("-v")>] Verbose
 with
     interface IArgParserTemplate with
@@ -29,20 +26,20 @@ with
             | Direction _ -> "direction of sync <up|down>."
             | Local _ -> "local root path."
             | Remote _ -> "remote root path."
+            | Threads _ -> "number of threads to run on"
             | Dry_Run _ -> "don't make any changes"
-            | Recursive _ -> "recurse into directories"
             | Verbose _ -> "verbose output"
 
 let doParse args = 
 
-    let parser = ArgumentParser.Create<CliArguments>(programName = "onedrive-cli.exe")
+    let parser = ArgumentParser.Create<CliArguments>()
     let results = parser.Parse args
 
     {
         Direction = results.GetResult Direction
         Local = results.TryGetResult Local
         Remote = results.TryGetResult Remote
+        Threads = results.TryGetResult Threads
         DryRun = results.Contains Dry_Run
-        Recursive = results.Contains Recursive
         Verbose = results.Contains Verbose
     }

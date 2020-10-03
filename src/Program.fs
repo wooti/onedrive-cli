@@ -5,7 +5,7 @@ open Microsoft.Graph.Auth
 open System.IO
 open Domain
 open CommandLine
-open Actors
+open OneDriveAPI
 
 [<EntryPoint>]
 let main argv =
@@ -13,10 +13,10 @@ let main argv =
     //let args = CommandLine.doParse argv
     let args = {
         Direction = Up
-        Local = Some "C:\\#sync"
+        Local = Some @"C:\Repos\onedrive-cli\temp"
         Remote = None
+        Threads = Some 20
         DryRun = true
-        Recursive = true
         Verbose = true
     }
 
@@ -39,16 +39,19 @@ let main argv =
 
     // Create an authentication provider by passing in a client application and graph scopes.
     let authProvider = new DeviceCodeProvider(application, ["files.read.all"], (fun dcr -> someCallback dcr))
+    
+    // TODO: Run with ChaosHandler
+
     // Create a new instance of GraphServiceClient with the authentication provider.
     let client = new GraphServiceClient(authProvider)
 
     // Graph 1.0 REST API: https://docs.microsoft.com/en-us/graph/api/resources/onedrive?view=graph-rest-1.0
     // Graph SDK .NET: https://github.com/microsoftgraph/msgraph-sdk-dotnet
 
-    let api = OneDriveAPI.build client
+    // https://docs.microsoft.com/en-us/graph/sdks/large-file-upload?tabs=csharp
 
-    let hasher = Actors.Hasher ()
-    let processor = Actors.Something api
+    let api = new OneDriveAPIClient(client)
+    let mainWorker = Actors.MainWorker (api, args.Threads.Value, args.Direction, args.DryRun)
 
     async {
         let! drive = api.GetDrive ()
@@ -65,7 +68,7 @@ let main argv =
             |> Option.map api.GetFolder
             |> Option.defaultValue (Async.retn drive.Root)
 
-        processor.Start localFolder remoteFolder 20
+        do! mainWorker.Start localFolder remoteFolder
     } 
     |> Async.RunSynchronously
     |> ignore

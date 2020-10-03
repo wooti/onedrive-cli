@@ -2,13 +2,9 @@
 
 open Microsoft.Graph
 open Domain
+open System.IO
 
-type IOneDriveAPI = 
-    abstract member GetDrive : unit -> Async<Drive>
-    abstract member GetFolder : string -> Async<RemoteFolder>
-    abstract member GetAllChildren : RemoteFolder -> Async<seq<RemoteItem>>
-
-let build (client : GraphServiceClient) = 
+type OneDriveAPIClient (client : GraphServiceClient) = 
 
     let toFolder (driveItem: Microsoft.Graph.DriveItem) = {
         Name = driveItem.Name
@@ -64,6 +60,7 @@ let build (client : GraphServiceClient) =
 
     let getAllItems folder = async {
 
+        // TODO: Delete this
         let rec getAllPages (request : IDriveItemChildrenCollectionPage) = async {
             let! remaining = async {
                 match request.NextPageRequest with
@@ -83,11 +80,16 @@ let build (client : GraphServiceClient) =
             | child when child.Package <> null -> driveItem |> toPackage |> RemoteFile
             | child -> failwithf "Unknown DriveItem type for file %s in %s" child.Name child.ParentReference.Path
 
-        return!
+        let! data =
             client.Drives.Item(folder.DriveID).Items.Item(folder.ID).Children.Request().GetAsync() 
             |> Async.AwaitTask
-            |> Async.bind getAllPages
-            |> Async.map (Seq.map toRemoteItem)
+
+        let items = new System.Collections.Generic.List<_>()
+        do! 
+            PageIterator<_>.CreatePageIterator(client, data, (fun a -> items.Add a; true)).IterateAsync()
+            |> Async.AwaitTask
+
+        return items |> Seq.map toRemoteItem
     }
 
     let getPathFolder path = async {
@@ -97,9 +99,33 @@ let build (client : GraphServiceClient) =
             |> Async.map toFolder
     }
 
-    { 
-        new IOneDriveAPI with
-            member __.GetDrive () = getDrive
-            member __.GetFolder path = getPathFolder path
-            member __.GetAllChildren folder = getAllItems folder
+    let downloadFile (file : RemoteFile) = async {
+        return! 
+            client.Drives.Item(file.DriveID).Items.Item(file.ID).Content.Request().GetAsync()
+            |> Async.AwaitTask
     }
+
+    let uploadFile (file : LocalFile) progress = async {
+        let props = 
+            new DriveItemUploadableProperties (
+                FileSize = (file.FileInfo.Length |> System.Nullable),
+                AdditionalData = (["@microsoft.graph.conflictBehavior", box "rename"] |> dict)
+            )
+        let! uploadSession =  
+            client.Me.Drive.Root.ItemWithPath("aa").CreateUploadSession(props).Request().PostAsync()
+            |> Async.AwaitTask
+
+        let maxSliceSize = 320 * 1024;
+        let fileUploadTask = new LargeFileUploadTask<DriveItem>(uploadSession, file.FileInfo.OpenRead(), maxSliceSize);
+
+        // TODO: Wire up progress
+        return! fileUploadTask.UploadAsync(progress)
+        |> Async.AwaitTask
+        |> Async.map (fun a -> if a.UploadSucceeded then a.ItemResponse else failwith "Upload failed")
+    }
+
+    member __.GetDrive () = getDrive
+    member __.GetFolder path = getPathFolder path
+    member __.GetAllChildren folder = getAllItems folder
+    member __.DownloadFile file = downloadFile file    
+    member __.UploadFile file progress = uploadFile file progress

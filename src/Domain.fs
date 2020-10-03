@@ -58,3 +58,7 @@ type Drive = {
     Used : int64
     Root : RemoteFolder
 }
+
+type Direction =
+    | Up
+    | Down
