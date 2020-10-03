@@ -1,4 +1,4 @@
-name: .NET Core
+name: Build
 
 on:
   push:
@@ -19,5 +19,7 @@ jobs:
         dotnet-version: 3.1.301
     - name: Install dependencies
       run: dotnet tool restore
+    - name: Paket restore
+      run: dotnet paket restore
     - name: Build
       run: dotnet build --configuration Release
