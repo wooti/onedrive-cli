@@ -2,15 +2,28 @@
 
 open Microsoft.Graph
 open Domain
-open System.IO
 
 type OneDriveAPIClient (client : GraphServiceClient) = 
 
-    let toFolder (driveItem: Microsoft.Graph.DriveItem) = {
+    let toRelativePath (path : string) =
+        // TODO: Make this pretty
+        let rootLocation = path.IndexOf("root:/")
+        
+        if rootLocation > 0 then
+            path.Substring(rootLocation + 6)
+        else
+            let rootLocation = path.IndexOf("root:")
+            if rootLocation > 0 then
+                path.Substring(rootLocation + 5)
+            else
+                // TODO Validate this assumption
+                failwith "Assumption error: Paths don't always contain root:"
+
+    let toFolder isRoot (driveItem: Microsoft.Graph.DriveItem) = {
         Name = driveItem.Name
         ID = driveItem.Id
         DriveID = driveItem.ParentReference.DriveId
-        Path = driveItem.ParentReference.Path
+        Path = if isRoot then "" else toRelativePath driveItem.ParentReference.Path
         Created = driveItem.CreatedDateTime.Value.DateTime
         Updated = driveItem.LastModifiedDateTime.Value.DateTime
     }
@@ -18,11 +31,12 @@ type OneDriveAPIClient (client : GraphServiceClient) =
     let toFile (driveItem: Microsoft.Graph.DriveItem) = {
         ID = driveItem.Id
         DriveID = driveItem.ParentReference.DriveId
-        Path = driveItem.ParentReference.Path
+        Path = toRelativePath driveItem.ParentReference.Path
         Name = driveItem.Name
         Created = driveItem.CreatedDateTime.Value.DateTime
         Updated = driveItem.LastModifiedDateTime.Value.DateTime
         SHA1 = driveItem.File.Hashes.Sha1Hash
+        QuickXOR = driveItem.File.Hashes.QuickXorHash
         Size = driveItem.Size.Value
     }
 
@@ -34,6 +48,7 @@ type OneDriveAPIClient (client : GraphServiceClient) =
         Created = driveItem.CreatedDateTime.Value.DateTime
         Updated = driveItem.LastModifiedDateTime.Value.DateTime
         SHA1 = ""
+        QuickXOR = ""
         Size = driveItem.Size.Value
     }
 
@@ -46,7 +61,7 @@ type OneDriveAPIClient (client : GraphServiceClient) =
         let! rootFolder = 
             client.Drives.Item(drive.Id).Root.Request().GetAsync() 
             |> Async.AwaitTask
-            |> Async.map toFolder
+            |> Async.map (toFolder true)
 
         return {
             Name = drive.Name
@@ -75,7 +90,7 @@ type OneDriveAPIClient (client : GraphServiceClient) =
         let toRemoteItem (driveItem : DriveItem) = 
 
             match driveItem with
-            | folder when folder.Folder <> null -> driveItem |> toFolder |> RemoteFolder
+            | folder when folder.Folder <> null -> driveItem |> toFolder false |> RemoteFolder
             | child when child.File <> null -> driveItem |> toFile |> RemoteFile
             | child when child.Package <> null -> driveItem |> toPackage |> RemoteFile
             | child -> failwithf "Unknown DriveItem type for file %s in %s" child.Name child.ParentReference.Path
@@ -96,7 +111,7 @@ type OneDriveAPIClient (client : GraphServiceClient) =
         return!
             client.Me.Drive.Root.ItemWithPath(path).Request().GetAsync()
             |> Async.AwaitTask
-            |> Async.map toFolder
+            |> Async.map (toFolder false)
     }
 
     let downloadFile (file : RemoteFile) = async {

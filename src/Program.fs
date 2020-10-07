@@ -6,17 +6,18 @@ open System.IO
 open Domain
 open CommandLine
 open OneDriveAPI
+open Main
 
 [<EntryPoint>]
 let main argv =
 
     //let args = CommandLine.doParse argv
     let args = {
-        Direction = Up
+        Direction = Down
         Local = Some @"C:\Repos\onedrive-cli\temp"
         Remote = None
-        Threads = Some 20
-        DryRun = true
+        Threads = Some 10
+        DryRun = false
         Verbose = true
     }
 
@@ -51,7 +52,6 @@ let main argv =
     // https://docs.microsoft.com/en-us/graph/sdks/large-file-upload?tabs=csharp
 
     let api = new OneDriveAPIClient(client)
-    let mainWorker = Actors.MainWorker (api, args.Threads.Value, args.Direction, args.DryRun)
 
     async {
         let! drive = api.GetDrive ()
@@ -68,7 +68,14 @@ let main argv =
             |> Option.map api.GetFolder
             |> Option.defaultValue (Async.retn drive.Root)
 
-        do! mainWorker.Start localFolder remoteFolder
+        // Kick off processing
+        (Some localFolder, Some remoteFolder) |> Job.Scan |> Main.queueJob
+
+        // Start workers
+        do [1 .. args.Threads.Value] |> Seq.iter (Worker.start api args.Direction args.DryRun args.Local.Value)
+
+        // Wait for completion
+        do! Main.awaitFinish ()
     } 
     |> Async.RunSynchronously
     |> ignore

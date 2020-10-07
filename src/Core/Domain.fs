@@ -26,6 +26,7 @@ type RemoteFile = {
     Created : DateTime
     Updated : DateTime
     SHA1 : string
+    QuickXOR : string
     Size : int64
 }
 
@@ -41,10 +42,10 @@ type RemoteFolder = {
 type RemoteItem =
     | RemoteFolder of RemoteFolder
     | RemoteFile of RemoteFile
-    member x.Name =
+    member x.FullName =
         match x with
-        | RemoteFolder f -> f.Name
-        | RemoteFile f -> f.Name
+        | RemoteFolder f -> Path.Combine(f.Path, f.Name)
+        | RemoteFile f -> Path.Combine(f.Path, f.Name)
 
 type Item =
     | Local of LocalItem

@@ -13,6 +13,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Build", "Build", "{57C9F4D7
 		paket.dependencies = paket.dependencies
 	EndProjectSection
 EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "OneDriveCLI.Test", "OneDriveCLI.Test\OneDriveCLI.Test.fsproj", "{2894A52D-388F-4FBC-8FC1-3C303E96BB83}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -23,6 +25,10 @@ Global
 		{73CC3929-1113-43EA-8A76-875D0E706EFC}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{73CC3929-1113-43EA-8A76-875D0E706EFC}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{73CC3929-1113-43EA-8A76-875D0E706EFC}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2894A52D-388F-4FBC-8FC1-3C303E96BB83}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2894A52D-388F-4FBC-8FC1-3C303E96BB83}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2894A52D-388F-4FBC-8FC1-3C303E96BB83}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2894A52D-388F-4FBC-8FC1-3C303E96BB83}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
