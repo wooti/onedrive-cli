@@ -9,9 +9,16 @@ type Job =
     | DiffContent of LocalItem option * RemoteItem option
     member x.Description =
         match x with
-        | Scan (f, y) -> sprintf "Scan: %O" f
-        | Compare (_, remote) -> sprintf "Compare: %s" remote.FullName
-        | DiffContent (local, remote) -> sprintf "Sync: %O %O" local remote
+        | Scan (f, y) -> 
+            sprintf "Scan: %s, %s" 
+                (f |> Option.map (fun a -> a.DirectoryInfo.FullName) |> Option.defaultValue "<None>")
+                (y |> Option.map (fun a -> a.Name) |> Option.defaultValue "<None>")
+        | Compare (_, remote) -> sprintf "Compare: %s" remote.Location
+        | DiffContent (local, remote) 
+            -> 
+            sprintf "DiffContent: %s, %s" 
+                (local |> Option.map (fun a -> a.Location) |> Option.defaultValue "<None>")
+                (remote |> Option.map (fun a -> a.Location) |> Option.defaultValue "<None>")
 
 type private ProcessMsg = 
     | Job of Job

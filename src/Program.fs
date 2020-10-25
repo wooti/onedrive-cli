@@ -61,7 +61,7 @@ let main argv =
             args.Local 
             |> Option.defaultValue Environment.CurrentDirectory
             |> DirectoryInfo
-            |> (fun x -> {DirectoryInfo = x})
+            |> (fun x -> {Location = "/"; DirectoryInfo = x})
 
         let! remoteFolder = 
             args.Remote

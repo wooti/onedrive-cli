@@ -6,6 +6,8 @@ open System.Security.Cryptography
 open Domain
 open System.Diagnostics
 open System.Collections
+open Microsoft.FSharp.NativeInterop
+open System.Runtime.InteropServices
 
 (*
 import Foundation
@@ -348,48 +350,37 @@ type SuperQuickXorHash () =
     let BITS_IN_BYTE = 8
     let SHIFT_BITS = 11
 
-    let longToBlock (long : int64) =
-        let bytes = BitConverter.GetBytes long
-        Array.append (Array.zeroCreate (BLOCK_LEN - bytes.Length)) bytes
-
-    let rotateLeft bitsLen (block : byte[]) = 
-        if bitsLen = 0 then
-            block
-        else
-            let mutable (lastCarry : System.Byte) = 0uy
-            let shiftCarry = BITS_IN_BYTE - bitsLen
-
-            for i in 0 .. block.Length - 1 do
-                let mutable (b : System.Byte) = block.[i]
-                block.[i] <- (b <<< bitsLen ||| lastCarry)
-                lastCarry <- (b >>> shiftCarry)
-
-            block.[0] <- block.[0] ||| lastCarry
-            block
-
     let xor (block : byte[]) (otherBlock : byte[]) = 
         let foo = new BitArray(block)
         foo.Xor(new BitArray(otherBlock)).CopyTo(block, 0)
 
-    let chunkUp size (stream : Stream) = seq {
-        let mutable reading = true
-        while reading do
-            let fileBytes = Array.zeroCreate size
-            let cnt = stream.Read(fileBytes, 0, size)
-            yield fileBytes
-            reading <- cnt = size
-    }
+    let xor2 (block : byte[]) (otherBlock : byte[]) = 
+        let blockAsBytes = new Span<byte>(block)
+        let blockAsLongs = MemoryMarshal.Cast<byte, uint64>(blockAsBytes)
 
-    let readFileInBlocks (stream : Stream) = 
-        let blockLength = BLOCK_LEN * BITS_IN_BYTE
-        let hashedFile = Array.zeroCreate blockLength
-        for chunk in chunkUp blockLength stream do
-            xor hashedFile chunk
-        hashedFile
+        let otherBlockAsBytes = new Span<byte>(otherBlock)
+        let otherBlockAsLongs = MemoryMarshal.Cast<byte, uint64>(otherBlockAsBytes)
+
+        for i in 0 .. blockAsLongs.Length - 1 do
+            blockAsLongs.[i] <- blockAsLongs.[i] ^^^ otherBlockAsLongs.[i]
+
+        ()
 
     let hashInternal (stream : Stream) = 
         let blockLength = BLOCK_LEN * BITS_IN_BYTE
-        let hashedFile = readFileInBlocks stream
+        
+        let chunkUp size (stream : Stream) = seq {
+            let mutable reading = true
+            while reading do
+                let fileBytes = Array.zeroCreate size
+                let cnt = stream.Read(fileBytes, 0, size)
+                yield fileBytes
+                reading <- cnt = size
+        }
+
+        let blockLength = BLOCK_LEN * BITS_IN_BYTE
+        let hashedFile = Array.zeroCreate blockLength
+        for chunk in chunkUp blockLength stream do xor hashedFile chunk
         
         let blocksToHash = Array2D.zeroCreate 8 20
 
@@ -402,21 +393,34 @@ type SuperQuickXorHash () =
         let arrayLine line mda =
             [for i in 0 .. Array2D.length2 mda - 1 do yield mda.[line,i]] |> List.toArray
 
+        let rotateLeft bitsLen (block : byte[]) = 
+            if bitsLen = 0 then
+                block
+            else
+                let mutable (lastCarry : System.Byte) = 0uy
+                let shiftCarry = BITS_IN_BYTE - bitsLen
+
+                for i in 0 .. block.Length - 1 do
+                    let b = block.[i]
+                    block.[i] <- (b <<< bitsLen ||| lastCarry)
+                    lastCarry <- (b >>> shiftCarry)
+
+                block.[0] <- block.[0] ||| lastCarry
+                block
+
         let returnBlock = blocksToHash |> arrayLine 0
         for i in 1 .. Array2D.length1 blocksToHash - 1 do
             xor returnBlock (blocksToHash |> arrayLine i |> rotateLeft i)
 
         returnBlock
 
-    member __.GetHashForFile (file : FileInfo) = 
-        let hashResult = longToBlock file.Length
-        use stream = new BufferedStream((file.OpenRead ()), 1024 * 1024)
-        xor hashResult (hashInternal stream)
-        Convert.ToBase64String hashResult
+    member __.GetHash (stream : Stream) length = 
 
-    member __.GetHashForBytes (bytes : byte array) = 
-        let hashResult = longToBlock bytes.LongLength
-        use stream = new MemoryStream(bytes)
+        let longToBlock (long : int64) =
+            let bytes = BitConverter.GetBytes long
+            Array.append (Array.zeroCreate (BLOCK_LEN - bytes.Length)) bytes
+
+        let hashResult = longToBlock length
         xor hashResult (hashInternal stream)
         Convert.ToBase64String hashResult
 
@@ -425,17 +429,39 @@ type HashType = SHA1 | QuickXOR
 type private HashMsg = HashType * FileInfo * AsyncReplyChannel<string>
 
 let private actor = MailboxProcessor<HashMsg>.Start(fun inbox -> 
+
+    let xorHasher = new SuperQuickXorHash()
     let rec loop () = async {
         let! (typ, file, reply) = inbox.Receive ()
-        let hashFile = file.OpenRead()
-        let hashAlgo : HashAlgorithm = match typ with SHA1 -> SHA1Managed.Create() :> _ | QuickXOR -> new QuickXorHash() :> _
-        Debug.WriteLine(file.FullName)
-        reply.Reply (hashAlgo.ComputeHash(hashFile) |> System.Convert.ToBase64String)
+        use hashFile = new BufferedStream(file.OpenRead(), 1024 * 1024)
+        
+        match typ with 
+        | SHA1 -> 
+            let hasher = SHA1Managed.Create()
+            hasher.ComputeHash hashFile |> System.Convert.ToBase64String
+        | QuickXOR -> 
+            let sw = Stopwatch.StartNew ()
+            let hash = xorHasher.GetHash hashFile file.Length
+            Debug.WriteLine(sprintf "Hash for %O in %dms" file.Name sw.ElapsedMilliseconds)
+            hash
+        |> reply.Reply
+
         return! loop ()
     }
     loop ()
 )
 
-let get typ localFile = 
+let getMB typ localFile = 
     actor.PostAndAsyncReply (fun reply -> (typ, localFile.FileInfo, reply))
+
+let xorHasher = new SuperQuickXorHash()
+
+let get typ localFile = 
+    use hashFile = new BufferedStream(localFile.FileInfo.OpenRead(), 1024 * 1024)
+    match typ with 
+    | SHA1 -> 
+        let hasher = SHA1Managed.Create()
+        hasher.ComputeHash hashFile |> System.Convert.ToBase64String
+    | QuickXOR -> 
+        xorHasher.GetHash hashFile localFile.FileInfo.Length
         

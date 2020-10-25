@@ -2,26 +2,27 @@
 open System
 open System.IO
 
+type Location = string
+
 type LocalFile = {
+    Location : Location
     FileInfo : FileInfo
 }
 
 type LocalFolder = {
+    Location : Location
     DirectoryInfo : DirectoryInfo
 }
 
 type LocalItem =
     | LocalFile of LocalFile
     | LocalFolder of LocalFolder
-    member x.Name =
-        match x with
-        | LocalFile f -> f.FileInfo.Name
-        | LocalFolder f -> f.DirectoryInfo.Name
+    member x.Location = match x with LocalFile f -> f.Location | LocalFolder f -> f.Location
 
 type RemoteFile = {
+    Location : Location
     ID : string
     DriveID : string
-    Path : string
     Name : string
     Created : DateTime
     Updated : DateTime
@@ -31,9 +32,9 @@ type RemoteFile = {
 }
 
 type RemoteFolder = {
+    Location : Location
     ID : string
     DriveID : string
-    Path : string
     Name : string
     Created : DateTime
     Updated : DateTime
@@ -42,14 +43,12 @@ type RemoteFolder = {
 type RemoteItem =
     | RemoteFolder of RemoteFolder
     | RemoteFile of RemoteFile
-    member x.FullName =
-        match x with
-        | RemoteFolder f -> Path.Combine(f.Path, f.Name)
-        | RemoteFile f -> Path.Combine(f.Path, f.Name)
+    member x.Location = match x with RemoteFolder f -> f.Location | RemoteFile f -> f.Location
 
 type Item =
     | Local of LocalItem
     | Remote of RemoteItem
+    member x.Location = match x with Local f -> f.Location | Remote f -> f.Location
 
 type Drive = {
     Name : string

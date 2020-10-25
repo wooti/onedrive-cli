@@ -9,27 +9,29 @@ let start (api : OneDriveAPIClient) (direction : Direction) (dryRun : bool) (loc
 
     let scan (localFolder : LocalFolder option) (remoteFolder : RemoteFolder option) = async {
 
+        let toLocation path = 
+            "/" + Path.GetRelativePath(localPath, path).Replace('\\', '/')
         let getLocalItems folder = 
             let allFolders = 
                 folder.DirectoryInfo.EnumerateDirectories ()
-                |> Seq.map (fun s -> Path.GetRelativePath(localPath, s.FullName), LocalItem.LocalFolder {DirectoryInfo = s})
+                |> Seq.map (fun s -> LocalItem.LocalFolder {Location = toLocation s.FullName; DirectoryInfo = s})
 
             let allFiles = 
                 folder.DirectoryInfo.EnumerateFiles ()
-                |> Seq.map (fun s -> Path.GetRelativePath(localPath, s.FullName), LocalItem.LocalFile {FileInfo = s})
+                |> Seq.map (fun s -> LocalItem.LocalFile {Location = toLocation s.FullName; FileInfo = s})
 
             Seq.append allFolders allFiles
 
         let getRemoteItems folder = async {
-            return! api.GetAllChildren folder |> Async.map (Seq.map (fun s -> s.FullName, s))
+            return! api.GetAllChildren folder
         }
         
         let local = localFolder |> Option.map getLocalItems |> Option.defaultValue Seq.empty
         let! remote = remoteFolder |> Option.map getRemoteItems |> Option.defaultValue (Async.retn Seq.empty)
         
         let squash localItems remoteItems =
-            let local = localItems |> Seq.map (fun (k,v) -> k, Item.Local v)
-            let remote = remoteItems |> Seq.map (fun (k,v) -> k, Item.Remote v)
+            let local = localItems |> Seq.map (fun (x : LocalItem) -> x.Location, Item.Local x)
+            let remote = remoteItems |> Seq.map (fun (x : RemoteItem) -> x.Location, Item.Remote x)
 
             Seq.append local remote
             |> Seq.groupBy fst
@@ -88,8 +90,9 @@ let start (api : OneDriveAPIClient) (direction : Direction) (dryRun : bool) (loc
                 printfn "Would download %s" file.Name
             else 
                 let! stream = api.DownloadFile file
-                Directory.CreateDirectory(Path.Combine(localPath, file.Path)) |> ignore
-                let localFile = new FileInfo(Path.Combine(localPath, file.Path, file.Name))
+                let location = file.Location.Substring(1).Replace('/', System.IO.Path.DirectorySeparatorChar)
+                Directory.CreateDirectory(Path.Combine(localPath, location)) |> ignore
+                let localFile = new FileInfo(Path.Combine(localPath, location, file.Name))
                 use fileStream = localFile.OpenWrite ()
                 stream.Seek(0L, SeekOrigin.Begin) |> ignore
                 do! stream.CopyToAsync(fileStream) |> Async.AwaitTask
@@ -138,10 +141,10 @@ let start (api : OneDriveAPIClient) (direction : Direction) (dryRun : bool) (loc
                     let! same = async {
                         match remoteFile with
                         | {SHA1 = remoteHash} when not (System.String.IsNullOrEmpty(remoteHash)) ->
-                            let! hash = Hasher.get Hasher.SHA1 localFile 
+                            let hash = Hasher.get Hasher.SHA1 localFile 
                             return hash = remoteHash
                         | {QuickXOR = remoteHash} when not (System.String.IsNullOrEmpty(remoteHash)) ->
-                            let! hash = Hasher.get Hasher.QuickXOR localFile 
+                            let hash = Hasher.get Hasher.QuickXOR localFile 
                             return hash = remoteHash
                         | _ -> return failwith "No valid remote hashes"
                     }
