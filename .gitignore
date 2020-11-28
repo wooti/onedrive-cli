@@ -40,3 +40,4 @@ paket-files/
 
 # Never commit tokens
 *.token
+/src/Test/
