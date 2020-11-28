@@ -9,7 +9,6 @@ type OneDriveAPIClient (client : GraphServiceClient) =
 
         let path = 
             let parentPath = driveItem.ParentReference.Path
-
             if parentPath = null then 
                 ""
             else 
@@ -77,18 +76,6 @@ type OneDriveAPIClient (client : GraphServiceClient) =
 
     let getAllItems folder = async {
 
-        // TODO: Delete this
-        let rec getAllPages (request : IDriveItemChildrenCollectionPage) = async {
-            let! remaining = async {
-                match request.NextPageRequest with
-                | null -> return Seq.empty
-                | _ -> 
-                    let! nextPage = request.NextPageRequest.GetAsync() |> Async.AwaitTask
-                    return! getAllPages nextPage
-            }
-            return request.CurrentPage |> Seq.append remaining
-        }
-
         let toRemoteItem (driveItem : DriveItem) = 
 
             match driveItem with
@@ -129,20 +116,30 @@ type OneDriveAPIClient (client : GraphServiceClient) =
                 AdditionalData = (["@microsoft.graph.conflictBehavior", box "rename"] |> dict)
             )
         let! uploadSession =  
-            client.Me.Drive.Root.ItemWithPath("aa").CreateUploadSession(props).Request().PostAsync()
+            client.Me.Drive.Root.ItemWithPath(file.Location).CreateUploadSession(props).Request().PostAsync()
             |> Async.AwaitTask
 
         let maxSliceSize = 320 * 1024;
         let fileUploadTask = new LargeFileUploadTask<DriveItem>(uploadSession, file.FileInfo.OpenRead(), maxSliceSize);
 
-        // TODO: Wire up progress
         return! fileUploadTask.UploadAsync(progress)
         |> Async.AwaitTask
         |> Async.map (fun a -> if a.UploadSucceeded then a.ItemResponse else failwith "Upload failed")
     }
 
+    let createFolder (location : Location) = async {
+        // TODO: Parsing the location seems naff, can this be turned into Folder/Name?
+        let where = location.Substring(0, location.LastIndexOf('/'))
+        let name = location.Substring(location.LastIndexOf('/') + 1)
+        let folder = new DriveItem (Name = name, Folder = new Folder())
+        return! 
+            client.Drive.Root.ItemWithPath(where).Children.Request().AddAsync(folder)
+            |> Async.AwaitTask
+    }
+
     member __.GetDrive () = getDrive
     member __.GetFolder path = getPathFolder path
     member __.GetAllChildren folder = getAllItems folder
+    member __.CreateFolder location = createFolder location
     member __.DownloadFile file = downloadFile file    
     member __.UploadFile file progress = uploadFile file progress

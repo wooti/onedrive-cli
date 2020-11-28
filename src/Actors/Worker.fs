@@ -76,18 +76,25 @@ let start (api : OneDriveAPIClient) (direction : Direction) (dryRun : bool) (loc
         let uploadFile file = async {
             Collector.report (Collector.Upload file)
             if dryRun then 
-                printfn "Would upload %s" file.FileInfo.Name
+                printfn "Would upload %s" file.Location
             else
                 // TODO: Report progress and item
                 let progress = {new System.IProgress<_> with member __.Report _ = ()}
-                let! item = api.UploadFile file progress
-                printfn "Uploaded %s" item.Name
+                let! _item = api.UploadFile file progress
+                printfn "Uploaded %s" file.Location
+        }
+
+        let uploadFolder (folder : LocalFolder) = async {
+            if dryRun then 
+                printfn "Would create remote folder %s" folder.Location
+            else
+                do! api.CreateFolder folder.Location |> Async.Ignore
         }
 
         let downloadFile (file : RemoteFile) = async {
             Collector.report (Collector.Download file)
             if dryRun then
-                printfn "Would download %s" file.Name
+                printfn "Would download %s" file.Location
             else 
                 let! stream = api.DownloadFile file
                 let relativeLocation = file.Location.Substring(1).Replace('/', System.IO.Path.DirectorySeparatorChar)
@@ -103,18 +110,32 @@ let start (api : OneDriveAPIClient) (direction : Direction) (dryRun : bool) (loc
                 targetFile.CreationTime <- file.Created
                 targetFile.LastAccessTime <- file.Updated
                 targetFile.LastWriteTime <- file.Updated
-                printfn "Downloaded %s" targetFile.FullName
+                printfn "Downloaded %s" file.Location
         }
+
+        let downloadFolder (folder : RemoteFolder) = 
+            if dryRun then
+                printfn "Would create local folder %s" folder.Name
+            else 
+                let relativeLocation = folder.Location.Substring(1).Replace('/', System.IO.Path.DirectorySeparatorChar)
+                let targetDirectory = DirectoryInfo(Path.Combine(localPath, relativeLocation))
+                targetDirectory.Create()
+
+                // Set local attributes
+                targetDirectory.CreationTime <- folder.Created
+                targetDirectory.LastAccessTime <- folder.Updated
+                targetDirectory.LastWriteTime <- folder.Updated
+                printfn "Created local folder %s" targetDirectory.FullName
 
         match local, remote, direction with
         | Some (LocalFolder folder), None, Up ->
-            () // UPLOAD CREATE FOLDER 
+            do! uploadFolder folder
         | Some (LocalFile file), None, Up ->
             do! uploadFile file
         | Some(LocalFile file), Some (RemoteFile _), Up ->
             do! uploadFile file
         | None, Some (RemoteFolder folder), Down ->
-            () // DOWNLOAD CREATE FOLDER
+            do downloadFolder folder
         | None, Some (RemoteFile file), Down ->
             do! downloadFile file
         | Some(LocalFile _), Some (RemoteFile remoteFile), Down ->
