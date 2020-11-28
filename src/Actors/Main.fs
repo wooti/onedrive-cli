@@ -11,11 +11,10 @@ type Job =
         match x with
         | Scan (f, y) -> 
             sprintf "Scan: %s, %s" 
-                (f |> Option.map (fun a -> a.DirectoryInfo.FullName) |> Option.defaultValue "<None>")
-                (y |> Option.map (fun a -> a.Name) |> Option.defaultValue "<None>")
+                (f |> Option.map (fun a -> a.Location) |> Option.defaultValue "<None>")
+                (y |> Option.map (fun a -> a.Location) |> Option.defaultValue "<None>")
         | Compare (_, remote) -> sprintf "Compare: %s" remote.Location
-        | DiffContent (local, remote) 
-            -> 
+        | DiffContent (local, remote) -> 
             sprintf "DiffContent: %s, %s" 
                 (local |> Option.map (fun a -> a.Location) |> Option.defaultValue "<None>")
                 (remote |> Option.map (fun a -> a.Location) |> Option.defaultValue "<None>")
@@ -58,10 +57,12 @@ let tryGetJob workerID =
 
 let awaitFinish () = async {
     let mutable finished = false
+    System.Console.Clear ()
+    System.Console.CursorVisible <- false
     while not finished do
-        do! Async.Sleep 1000
-        System.Console.Clear ()
+        do! Async.Sleep 200
         let! queue, active = processor.PostAndAsyncReply (fun reply -> ProcessMsg.Status reply)
+        System.Console.SetCursorPosition(0,0)
         printfn "Queue size: %d with %d active workers" queue.Length active.Count
         active |> Seq.iter (fun (KeyValue(x,y)) -> printfn "%d: %A" x y.Description)
         finished <- queue.Length = 0 && active.IsEmpty

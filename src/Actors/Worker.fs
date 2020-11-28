@@ -80,8 +80,8 @@ let start (api : OneDriveAPIClient) (direction : Direction) (dryRun : bool) (loc
             else
                 // TODO: Report progress and item
                 let progress = {new System.IProgress<_> with member __.Report _ = ()}
-                let! _item = api.UploadFile file progress
-                ()
+                let! item = api.UploadFile file progress
+                printfn "Uploaded %s" item.Name
         }
 
         let downloadFile (file : RemoteFile) = async {
@@ -90,19 +90,20 @@ let start (api : OneDriveAPIClient) (direction : Direction) (dryRun : bool) (loc
                 printfn "Would download %s" file.Name
             else 
                 let! stream = api.DownloadFile file
-                let location = file.Location.Substring(1).Replace('/', System.IO.Path.DirectorySeparatorChar)
-                Directory.CreateDirectory(Path.Combine(localPath, location)) |> ignore
-                let localFile = new FileInfo(Path.Combine(localPath, location, file.Name))
-                use fileStream = localFile.OpenWrite ()
+                let relativeLocation = file.Location.Substring(1).Replace('/', System.IO.Path.DirectorySeparatorChar)
+                let targetFile = FileInfo(Path.Combine(localPath, relativeLocation))
+                targetFile.Directory.Create()
+
+                use fileStream = targetFile.OpenWrite ()
                 stream.Seek(0L, SeekOrigin.Begin) |> ignore
                 do! stream.CopyToAsync(fileStream) |> Async.AwaitTask
                 fileStream.Close()
             
                 // Set local attributes
-                localFile.CreationTime <- file.Created
-                localFile.LastAccessTime <- file.Updated
-                localFile.LastWriteTime <- file.Updated
-                printfn "Downloaded %s" localFile.FullName
+                targetFile.CreationTime <- file.Created
+                targetFile.LastAccessTime <- file.Updated
+                targetFile.LastWriteTime <- file.Updated
+                printfn "Downloaded %s" targetFile.FullName
         }
 
         match local, remote, direction with
@@ -110,14 +111,14 @@ let start (api : OneDriveAPIClient) (direction : Direction) (dryRun : bool) (loc
             () // UPLOAD CREATE FOLDER 
         | Some (LocalFile file), None, Up ->
             do! uploadFile file
+        | Some(LocalFile file), Some (RemoteFile _), Up ->
+            do! uploadFile file
         | None, Some (RemoteFolder folder), Down ->
             () // DOWNLOAD CREATE FOLDER
         | None, Some (RemoteFile file), Down ->
             do! downloadFile file
         | Some(LocalFile _), Some (RemoteFile remoteFile), Down ->
             do! downloadFile remoteFile
-        | Some(LocalFile file), Some (RemoteFile _), Up ->
-            do! uploadFile file
         | _ -> 
             () // DO NOTHING
     }
@@ -141,10 +142,10 @@ let start (api : OneDriveAPIClient) (direction : Direction) (dryRun : bool) (loc
                     let! same = async {
                         match remoteFile with
                         | {SHA1 = remoteHash} when not (System.String.IsNullOrEmpty(remoteHash)) ->
-                            let hash = Hasher.get Hasher.SHA1 localFile 
+                            let hash = Hasher.generateHash Hasher.SHA1 localFile 
                             return hash = remoteHash
                         | {QuickXOR = remoteHash} when not (System.String.IsNullOrEmpty(remoteHash)) ->
-                            let hash = Hasher.get Hasher.QuickXOR localFile 
+                            let hash = Hasher.generateHash Hasher.QuickXOR localFile 
                             return hash = remoteHash
                         | _ -> return failwith "No valid remote hashes"
                     }

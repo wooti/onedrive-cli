@@ -11,8 +11,8 @@
     <Compile Include="Core\Domain.fs" />
     <Compile Include="Core\Async.fs" />
     <Compile Include="Core\OneDriveAPI.fs" />
+    <Compile Include="Core\Hasher.fs" />
     <Compile Include="Actors\Collector.fs" />
-    <Compile Include="Actors\Hasher.fs" />
     <Compile Include="Actors\Main.fs" />
     <Compile Include="Actors\Worker.fs" />
     <Compile Include="Logging.fs" />
