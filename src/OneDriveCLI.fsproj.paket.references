@@ -4,3 +4,4 @@ Microsoft.Graph.Auth
 Microsoft.Identity.Client
 TaskBuilder.fs
 Argu
+Goblinfactory.Konsole

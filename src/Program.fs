@@ -55,7 +55,7 @@ let main argv =
 
     async {
         let! drive = api.GetDrive ()
-        log.Info "Drive details Name = %s, Id = %s" drive.Name drive.Id
+        Output.writer.printfn (sprintf "Drive details Name = %s, Id = %s" drive.Name drive.Id) 
 
         let localFolder = 
             args.Local 
@@ -75,7 +75,7 @@ let main argv =
         do [1 .. args.Threads.Value] |> Seq.iter (Worker.start api args.Direction args.DryRun args.Local.Value)
 
         // Wait for completion
-        do! Main.awaitFinish ()
+        do! Main.runToCompletion ()
     } 
     |> Async.RunSynchronously
     |> ignore

@@ -76,17 +76,17 @@ let start (api : OneDriveAPIClient) (direction : Direction) (dryRun : bool) (loc
         let uploadFile file = async {
             Collector.report (Collector.Upload file)
             if dryRun then 
-                printfn "Would upload %s" file.Location
+                Output.writer.printfn (sprintf "Would upload %s" file.Location)
             else
                 // TODO: Report progress and item
                 let progress = {new System.IProgress<_> with member __.Report _ = ()}
                 let! _item = api.UploadFile file progress
-                printfn "Uploaded %s" file.Location
+                Output.writer.printfn (sprintf "Uploaded %s" file.Location)
         }
 
         let uploadFolder (folder : LocalFolder) = async {
             if dryRun then 
-                printfn "Would create remote folder %s" folder.Location
+                Output.writer.printfn (sprintf "Would create remote folder %s" folder.Location)
             else
                 do! api.CreateFolder folder.Location |> Async.Ignore
         }
@@ -94,7 +94,7 @@ let start (api : OneDriveAPIClient) (direction : Direction) (dryRun : bool) (loc
         let downloadFile (file : RemoteFile) = async {
             Collector.report (Collector.Download file)
             if dryRun then
-                printfn "Would download %s" file.Location
+                Output.writer.printfn (sprintf "Would download %s" file.Location)
             else 
                 let! stream = api.DownloadFile file
                 let relativeLocation = file.Location.Substring(1).Replace('/', System.IO.Path.DirectorySeparatorChar)
@@ -110,12 +110,12 @@ let start (api : OneDriveAPIClient) (direction : Direction) (dryRun : bool) (loc
                 targetFile.CreationTime <- file.Created
                 targetFile.LastAccessTime <- file.Updated
                 targetFile.LastWriteTime <- file.Updated
-                printfn "Downloaded %s" file.Location
+                Output.writer.printfn (sprintf "Downloaded %s" file.Location)
         }
 
         let downloadFolder (folder : RemoteFolder) = 
             if dryRun then
-                printfn "Would create local folder %s" folder.Name
+                Output.writer.printfn (sprintf "Would create local folder %s" folder.Name)
             else 
                 let relativeLocation = folder.Location.Substring(1).Replace('/', System.IO.Path.DirectorySeparatorChar)
                 let targetDirectory = DirectoryInfo(Path.Combine(localPath, relativeLocation))
@@ -125,7 +125,7 @@ let start (api : OneDriveAPIClient) (direction : Direction) (dryRun : bool) (loc
                 targetDirectory.CreationTime <- folder.Created
                 targetDirectory.LastAccessTime <- folder.Updated
                 targetDirectory.LastWriteTime <- folder.Updated
-                printfn "Created local folder %s" targetDirectory.FullName
+                Output.writer.printfn (sprintf "Created local folder %s" targetDirectory.FullName)
 
         match local, remote, direction with
         | Some (LocalFolder folder), None, Up ->

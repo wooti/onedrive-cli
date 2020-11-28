@@ -55,16 +55,13 @@ let queueJob job =
 let tryGetJob workerID = 
     processor.PostAndAsyncReply (fun reply -> RequestJob (workerID, reply))
 
-let awaitFinish () = async {
+let runToCompletion () = async {
     let mutable finished = false
-    System.Console.Clear ()
-    System.Console.CursorVisible <- false
+
     while not finished do
-        do! Async.Sleep 200
+        do! Async.Sleep 500
         let! queue, active = processor.PostAndAsyncReply (fun reply -> ProcessMsg.Status reply)
-        System.Console.SetCursorPosition(0,0)
-        printfn "Queue size: %d with %d active workers" queue.Length active.Count
-        active |> Seq.iter (fun (KeyValue(x,y)) -> printfn "%d: %A" x y.Description)
+        Output.writer.header 0 (sprintf "Queue size: %d with %d active workers " queue.Length active.Count)
+        active |> Seq.iteri (fun i (KeyValue(x,y)) -> Output.writer.header (i + 1) (sprintf "%d: %A" x y.Description))
         finished <- queue.Length = 0 && active.IsEmpty
-        
     } 
