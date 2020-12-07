@@ -8,17 +8,17 @@
     <OutputPath>../build/</OutputPath>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="Core\Output.fs" />
+    <Content Include="Properties\launchSettings.json" />
+    <Compile Include="Modules\CommandLine.fs" />
+    <Compile Include="Modules\Async.fs" />
+    <Compile Include="Modules\Output.fs" />
+    <Compile Include="Modules\TokenSaver.fs" />
+    <Compile Include="Modules\Hasher.fs" />
     <Compile Include="Core\Domain.fs" />
-    <Compile Include="Core\Async.fs" />
     <Compile Include="Core\OneDriveAPI.fs" />
-    <Compile Include="Core\Hasher.fs" />
     <Compile Include="Actors\Collector.fs" />
     <Compile Include="Actors\Main.fs" />
     <Compile Include="Actors\Worker.fs" />
-    <Compile Include="Logging.fs" />
-    <Compile Include="CommandLine.fs" />
-    <Compile Include="TokenSaver.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <Import Project="..\.paket\Paket.Restore.targets" />

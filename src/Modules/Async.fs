@@ -1,5 +1,5 @@
 ﻿// https://fsharpforfunandprofit.com/posts/elevated-world-5/
-module Async 
+module OneDriveCLI.Modules.Async 
 
 let map f xAsync = async {
     // get the contents of xAsync 

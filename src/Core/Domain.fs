@@ -1,8 +1,13 @@
-﻿module Domain
+﻿module OneDriveCLI.Core.Domain
 open System
 open System.IO
 
-type Location = string
+type Location = {
+    Folder : string
+    Name : string
+}
+with 
+    member x.FullName = x.Folder + "/" + x.Name
 
 type LocalFile = {
     Location : Location
@@ -23,7 +28,6 @@ type RemoteFile = {
     Location : Location
     ID : string
     DriveID : string
-    Name : string
     Created : DateTime
     Updated : DateTime
     SHA1 : string
@@ -35,7 +39,6 @@ type RemoteFolder = {
     Location : Location
     ID : string
     DriveID : string
-    Name : string
     Created : DateTime
     Updated : DateTime
 }
@@ -62,3 +65,20 @@ type Drive = {
 type Direction =
     | Up
     | Down
+
+type Job = 
+    | Scan of LocalFolder option * RemoteFolder option
+    | Compare of LocalItem * RemoteItem
+    | Download of RemoteItem
+    | Upload of LocalItem
+    member x.Description =
+        match x with
+        | Scan (f, y) -> 
+            sprintf "Scan: %s, %s" 
+                (f |> Option.map (fun a -> a.Location.FullName) |> Option.defaultValue "<None>")
+                (y |> Option.map (fun a -> a.Location.FullName) |> Option.defaultValue "<None>")
+        | Compare (_, remote) -> sprintf "Compare: %s" remote.Location.FullName
+        | Download (remote) -> 
+            sprintf "Download: %s" remote.Location.FullName
+        | Upload (local) -> 
+            sprintf "Upload: %s" local.Location.FullName

@@ -3,7 +3,6 @@
 open System
 open System.IO
 open System.Security.Cryptography
-open Domain
 open System.Collections
 
 let BLOCK_LEN = 20
@@ -72,12 +71,12 @@ let private getHash (stream : Stream) length =
 
 type HashType = SHA1 | QuickXOR
 
-let generateHash typ localFile = 
-    use hashFile = new BufferedStream(localFile.FileInfo.OpenRead(), 1024 * 1024)
+let generateHash typ (file : FileInfo) = 
+    use hashFile = new BufferedStream(file.OpenRead(), 1024 * 1024)
     match typ with 
     | SHA1 -> 
         let hasher = SHA1Managed.Create()
         hasher.ComputeHash hashFile |> System.Convert.ToBase64String
     | QuickXOR -> 
-        getHash hashFile localFile.FileInfo.Length
+        getHash hashFile file.Length
         

@@ -1,23 +1,9 @@
-﻿module Main
-open Domain
+﻿module OneDriveCLI.Actors.Main
+
+open OneDriveCLI.Core.Domain
+open OneDriveCLI.Modules
 
 type WorkerID = int
-
-type Job = 
-    | Scan of LocalFolder option * RemoteFolder option
-    | Compare of LocalItem * RemoteItem
-    | DiffContent of LocalItem option * RemoteItem option
-    member x.Description =
-        match x with
-        | Scan (f, y) -> 
-            sprintf "Scan: %s, %s" 
-                (f |> Option.map (fun a -> a.Location) |> Option.defaultValue "<None>")
-                (y |> Option.map (fun a -> a.Location) |> Option.defaultValue "<None>")
-        | Compare (_, remote) -> sprintf "Compare: %s" remote.Location
-        | DiffContent (local, remote) -> 
-            sprintf "DiffContent: %s, %s" 
-                (local |> Option.map (fun a -> a.Location) |> Option.defaultValue "<None>")
-                (remote |> Option.map (fun a -> a.Location) |> Option.defaultValue "<None>")
 
 type private ProcessMsg = 
     | Job of Job
@@ -61,7 +47,9 @@ let runToCompletion () = async {
     while not finished do
         do! Async.Sleep 500
         let! queue, active = processor.PostAndAsyncReply (fun reply -> ProcessMsg.Status reply)
+        let! status = Collector.get ()
         Output.writer.header 0 (sprintf "Queue size: %d with %d active workers " queue.Length active.Count)
-        active |> Seq.iteri (fun i (KeyValue(x,y)) -> Output.writer.header (i + 1) (sprintf "%d: %A" x y.Description))
+        Output.writer.header 1 (sprintf "Downloaded Files: %d (%d KB), Uploaded Files %d (%d KB), Unchanged Files: %d " status.DownloadedFiles (status.DownloadedBytes / 1024L) status.UploadedFiles (status.UploadedBytes / 1024L) status.UnchangedFiles)
+        active |> Seq.iteri (fun i (KeyValue(x,y)) -> Output.writer.header (i + 2) (sprintf "%d: %A" x y.Description))
         finished <- queue.Length = 0 && active.IsEmpty
     } 

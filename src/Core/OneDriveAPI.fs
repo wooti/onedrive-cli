@@ -1,7 +1,8 @@
-﻿module OneDriveAPI
+﻿module OneDriveCLI.Core.OneDriveAPI
 
 open Microsoft.Graph
 open Domain
+open OneDriveCLI.Modules
 
 type OneDriveAPIClient (client : GraphServiceClient) = 
 
@@ -15,14 +16,10 @@ type OneDriveAPIClient (client : GraphServiceClient) =
                 let relativePath = parentPath.Substring(parentPath.IndexOf("root:") + 5)
                 if relativePath.StartsWith('/') then relativePath.Substring(1) else relativePath
 
-        if path = "" then
-            "/" + driveItem.Name
-        else
-            "/" + path + "/" + driveItem.Name
+        {Folder = path; Name = driveItem.Name}
 
     let toFolder (driveItem: Microsoft.Graph.DriveItem) = {
         Location = toLocation driveItem
-        Name = driveItem.Name
         ID = driveItem.Id
         DriveID = driveItem.ParentReference.DriveId
         Created = driveItem.CreatedDateTime.Value.DateTime
@@ -33,7 +30,6 @@ type OneDriveAPIClient (client : GraphServiceClient) =
         Location = toLocation driveItem
         ID = driveItem.Id
         DriveID = driveItem.ParentReference.DriveId
-        Name = driveItem.Name
         Created = driveItem.CreatedDateTime.Value.DateTime
         Updated = driveItem.LastModifiedDateTime.Value.DateTime
         SHA1 = driveItem.File.Hashes.Sha1Hash
@@ -45,7 +41,6 @@ type OneDriveAPIClient (client : GraphServiceClient) =
         Location = toLocation driveItem
         ID = driveItem.Id
         DriveID = driveItem.ParentReference.DriveId
-        Name = driveItem.Name
         Created = driveItem.CreatedDateTime.Value.DateTime
         Updated = driveItem.LastModifiedDateTime.Value.DateTime
         SHA1 = ""
@@ -116,7 +111,7 @@ type OneDriveAPIClient (client : GraphServiceClient) =
                 AdditionalData = (["@microsoft.graph.conflictBehavior", box "rename"] |> dict)
             )
         let! uploadSession =  
-            client.Me.Drive.Root.ItemWithPath(file.Location).CreateUploadSession(props).Request().PostAsync()
+            client.Me.Drive.Root.ItemWithPath(file.Location.Folder + "/" + file.FileInfo.Name).CreateUploadSession(props).Request().PostAsync()
             |> Async.AwaitTask
 
         let maxSliceSize = 320 * 1024;
@@ -127,19 +122,16 @@ type OneDriveAPIClient (client : GraphServiceClient) =
         |> Async.map (fun a -> if a.UploadSucceeded then a.ItemResponse else failwith "Upload failed")
     }
 
-    let createFolder (location : Location) = async {
-        // TODO: Parsing the location seems naff, can this be turned into Folder/Name?
-        let where = location.Substring(0, location.LastIndexOf('/'))
-        let name = location.Substring(location.LastIndexOf('/') + 1)
+    let createFolder (location : Location) name = async {
         let folder = new DriveItem (Name = name, Folder = new Folder())
         return! 
-            client.Drive.Root.ItemWithPath(where).Children.Request().AddAsync(folder)
+            client.Drive.Root.ItemWithPath(location.Folder).Children.Request().AddAsync(folder)
             |> Async.AwaitTask
     }
 
     member __.GetDrive () = getDrive
     member __.GetFolder path = getPathFolder path
     member __.GetAllChildren folder = getAllItems folder
-    member __.CreateFolder location = createFolder location
+    member __.CreateFolder location name = createFolder location name
     member __.DownloadFile file = downloadFile file    
     member __.UploadFile file progress = uploadFile file progress

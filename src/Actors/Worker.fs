@@ -1,24 +1,42 @@
-﻿module Worker
+﻿module OneDriveCLI.Actors.Worker
 
-open Domain
 open System.IO
 open Main
-open OneDriveAPI
+open OneDriveCLI.Core.OneDriveAPI
+open OneDriveCLI.Core.Domain
+open OneDriveCLI.Modules
 
-let start (api : OneDriveAPIClient) (direction : Direction) (dryRun : bool) (localPath : string) id = 
+let start (api : OneDriveAPIClient) (direction : Direction) (dryRun : bool) (localPath : string) (remotePath : string) id = 
+
+    let toUploadDownload local remote =  
+        match direction, local, remote with
+        | Up, Some local, _ ->
+            [local |> Job.Upload]
+        | Down, _, Some remote ->
+            [remote |> Job.Download]
+        | Up, None, Some remote ->
+            Output.writer.printfn "Extra remote file: %s" remote.Location.FullName
+            []
+        | Down, Some local, None ->
+            Output.writer.printfn "Extra local file: %s" local.Location.FullName
+            []
+        | _ -> 
+            [] // DO NOTHING
 
     let scan (localFolder : LocalFolder option) (remoteFolder : RemoteFolder option) = async {
 
-        let toLocation path = 
-            "/" + Path.GetRelativePath(localPath, path).Replace('\\', '/')
+        let toLocation dirName name = 
+            let relative = Path.GetRelativePath(localPath, dirName).Replace('\\', '/')
+            {Folder = (if relative = "." then "" else relative); Name = name}
+
         let getLocalItems folder = 
             let allFolders = 
                 folder.DirectoryInfo.EnumerateDirectories ()
-                |> Seq.map (fun s -> LocalItem.LocalFolder {Location = toLocation s.FullName; DirectoryInfo = s})
+                |> Seq.map (fun s -> LocalItem.LocalFolder {Location = toLocation s.Parent.FullName s.Name; DirectoryInfo = s})
 
             let allFiles = 
                 folder.DirectoryInfo.EnumerateFiles ()
-                |> Seq.map (fun s -> LocalItem.LocalFile {Location = toLocation s.FullName; FileInfo = s})
+                |> Seq.map (fun s -> LocalItem.LocalFile {Location = toLocation s.DirectoryName s.Name; FileInfo = s})
 
             Seq.append allFolders allFiles
 
@@ -39,23 +57,13 @@ let start (api : OneDriveAPIClient) (direction : Direction) (dryRun : bool) (loc
             
         let proc = function 
             | None, Some (RemoteFile file) -> 
-                [
-                    Job.DiffContent(None, file |> RemoteItem.RemoteFile |> Some)
-                ]
+                toUploadDownload None (file |> RemoteItem.RemoteFile |> Some)
             | None, Some (RemoteFolder folder) -> 
-                [
-                    Job.DiffContent(None, folder |> RemoteItem.RemoteFolder |> Some)
-                    Job.Scan (None, (Some folder))
-                ]
+                Job.Scan (None, (Some folder)) :: toUploadDownload None (folder |> RemoteItem.RemoteFolder |> Some)
             | Some (LocalFile local), None -> 
-                [
-                    Job.DiffContent(local |> LocalItem.LocalFile |> Some, None)
-                ]
+                toUploadDownload (local |> LocalItem.LocalFile |> Some) None
             | Some (LocalFolder local), None ->
-                [
-                    Job.DiffContent(local |> LocalItem.LocalFolder |> Some, None)
-                    Job.Scan ((Some local), None)
-                ]
+                Job.Scan ((Some local), None) :: toUploadDownload (local |> LocalItem.LocalFolder |> Some) None
             | Some (LocalFolder localFolder), Some (RemoteFolder remoteFolder) -> 
                 [
                     Job.Compare (localFolder |> LocalItem.LocalFolder, remoteFolder |> RemoteItem.RemoteFolder)
@@ -71,78 +79,61 @@ let start (api : OneDriveAPIClient) (direction : Direction) (dryRun : bool) (loc
         |> Seq.iter (proc >> Seq.iter Main.queueJob)
     }
 
-    let applyChange local remote = async {
-
-        let uploadFile file = async {
-            Collector.report (Collector.Upload file)
-            if dryRun then 
-                Output.writer.printfn (sprintf "Would upload %s" file.Location)
-            else
-                // TODO: Report progress and item
-                let progress = {new System.IProgress<_> with member __.Report _ = ()}
-                let! _item = api.UploadFile file progress
-                Output.writer.printfn (sprintf "Uploaded %s" file.Location)
-        }
-
-        let uploadFolder (folder : LocalFolder) = async {
-            if dryRun then 
-                Output.writer.printfn (sprintf "Would create remote folder %s" folder.Location)
-            else
-                do! api.CreateFolder folder.Location |> Async.Ignore
-        }
-
-        let downloadFile (file : RemoteFile) = async {
-            Collector.report (Collector.Download file)
-            if dryRun then
-                Output.writer.printfn (sprintf "Would download %s" file.Location)
-            else 
-                let! stream = api.DownloadFile file
-                let relativeLocation = file.Location.Substring(1).Replace('/', System.IO.Path.DirectorySeparatorChar)
-                let targetFile = FileInfo(Path.Combine(localPath, relativeLocation))
-                targetFile.Directory.Create()
-
-                use fileStream = targetFile.OpenWrite ()
-                stream.Seek(0L, SeekOrigin.Begin) |> ignore
-                do! stream.CopyToAsync(fileStream) |> Async.AwaitTask
-                fileStream.Close()
-            
-                // Set local attributes
-                targetFile.CreationTime <- file.Created
-                targetFile.LastAccessTime <- file.Updated
-                targetFile.LastWriteTime <- file.Updated
-                Output.writer.printfn (sprintf "Downloaded %s" file.Location)
-        }
-
-        let downloadFolder (folder : RemoteFolder) = 
-            if dryRun then
-                Output.writer.printfn (sprintf "Would create local folder %s" folder.Name)
-            else 
-                let relativeLocation = folder.Location.Substring(1).Replace('/', System.IO.Path.DirectorySeparatorChar)
-                let targetDirectory = DirectoryInfo(Path.Combine(localPath, relativeLocation))
-                targetDirectory.Create()
-
-                // Set local attributes
-                targetDirectory.CreationTime <- folder.Created
-                targetDirectory.LastAccessTime <- folder.Updated
-                targetDirectory.LastWriteTime <- folder.Updated
-                Output.writer.printfn (sprintf "Created local folder %s" targetDirectory.FullName)
-
-        match local, remote, direction with
-        | Some (LocalFolder folder), None, Up ->
-            do! uploadFolder folder
-        | Some (LocalFile file), None, Up ->
-            do! uploadFile file
-        | Some(LocalFile file), Some (RemoteFile _), Up ->
-            do! uploadFile file
-        | None, Some (RemoteFolder folder), Down ->
-            do downloadFolder folder
-        | None, Some (RemoteFile file), Down ->
-            do! downloadFile file
-        | Some(LocalFile _), Some (RemoteFile remoteFile), Down ->
-            do! downloadFile remoteFile
-        | _ -> 
-            () // DO NOTHING
+    let uploadFile file = async {
+        file |> LocalFile |> Collector.Upload |> Collector.report
+        if dryRun then 
+            Output.writer.printfn "Would upload %s" file.Location.FullName
+        else
+            // TODO: Report progress and item
+            let progress = {new System.IProgress<_> with member __.Report _ = ()}
+            let! _item = api.UploadFile file progress
+            Output.writer.printfn "Uploaded %s" file.Location.FullName
     }
+
+    let uploadFolder (folder : LocalFolder) = async {
+        folder |> LocalFolder |> Collector.Upload |> Collector.report
+        if dryRun then 
+            Output.writer.printfn "Would create remote folder %s" folder.Location.FullName
+        else
+            do! api.CreateFolder folder.Location folder.DirectoryInfo.Name |> Async.Ignore
+    }
+
+    let downloadFile (file : RemoteFile) = async {
+        file |> RemoteFile |> Collector.Download |> Collector.report
+        if dryRun then
+            Output.writer.printfn "Would download %s" file.Location.FullName
+        else 
+            let! stream = api.DownloadFile file
+            let relativeLocation = file.Location.Folder.Replace('/', System.IO.Path.DirectorySeparatorChar)
+            let targetFile = FileInfo(Path.Combine(localPath, relativeLocation, file.Location.Name))
+            targetFile.Directory.Create()
+
+            use fileStream = targetFile.OpenWrite ()
+            stream.Seek(0L, SeekOrigin.Begin) |> ignore
+            do! stream.CopyToAsync(fileStream) |> Async.AwaitTask
+            fileStream.Close()
+        
+            // Set local attributes
+            targetFile.CreationTime <- file.Created
+            targetFile.LastAccessTime <- file.Updated
+            targetFile.LastWriteTime <- file.Updated
+            Output.writer.printfn "Downloaded %s" file.Location.FullName
+    }
+
+    let downloadFolder (folder : RemoteFolder) = 
+        folder |> RemoteFolder |> Collector.Download |> Collector.report
+        if dryRun then
+            Output.writer.printfn "Would create local folder %s" folder.Location.Name
+        else 
+            let relativeLocation = folder.Location.Folder.Replace('/', System.IO.Path.DirectorySeparatorChar)
+            let targetDirectory = DirectoryInfo(Path.Combine(localPath, relativeLocation, folder.Location.Name))
+            targetDirectory.Create()
+
+            // Set local attributes
+            targetDirectory.CreationTime <- folder.Created
+            targetDirectory.LastAccessTime <- folder.Updated
+            targetDirectory.LastWriteTime <- folder.Updated
+            Output.writer.printfn "Created local folder %s" targetDirectory.FullName
 
     MailboxProcessor<unit>.Start(fun _ ->
         let rec loop () = async {
@@ -152,28 +143,39 @@ let start (api : OneDriveAPIClient) (direction : Direction) (dryRun : bool) (loc
             | None -> do! Async.Sleep(100) // No work to do right now 
             | Some (Job.Scan (a,b)) -> 
                 do! scan a b
-            | Some (Job.DiffContent (a,b)) ->
-                do! applyChange a b
+            | Some (Job.Download (RemoteFile f)) ->
+                do! downloadFile f
+            | Some (Job.Download (RemoteFolder f)) ->
+                do downloadFolder f
+            | Some (Job.Upload (LocalFile f)) ->
+                do! uploadFile f
+            | Some (Job.Upload (LocalFolder f)) ->
+                do! uploadFolder f
             | Some (Job.Compare (local, remote)) -> 
                 match (local, remote) with
-                | LocalFolder a, RemoteFolder b -> 
+                | LocalFolder localFolder, RemoteFolder remoteFolder -> 
                     // TODO: Check folder attributes
-                    ()
+                    let same = true
+
+                    if same then
+                        (local, remote) |> Collector.Same |> Collector.report
+
                 | LocalFile localFile, RemoteFile remoteFile -> 
                     let! same = async {
                         match remoteFile with
                         | {SHA1 = remoteHash} when not (System.String.IsNullOrEmpty(remoteHash)) ->
-                            let hash = Hasher.generateHash Hasher.SHA1 localFile 
+                            let hash = Hasher.generateHash Hasher.SHA1 localFile.FileInfo
                             return hash = remoteHash
                         | {QuickXOR = remoteHash} when not (System.String.IsNullOrEmpty(remoteHash)) ->
-                            let hash = Hasher.generateHash Hasher.QuickXOR localFile 
+                            let hash = Hasher.generateHash Hasher.QuickXOR localFile.FileInfo
                             return hash = remoteHash
                         | _ -> return failwith "No valid remote hashes"
                     }
+
                     if same then
-                        Collector.report Collector.Same
+                        (local, remote) |> Collector.Same |> Collector.report
                     else
-                        Job.DiffContent (Some local, Some remote) |> Main.queueJob
+                        toUploadDownload (Some local) (Some remote) |> List.iter Main.queueJob
 
                 | LocalFolder _, RemoteFile _
                 | LocalFile _, RemoteFolder _ ->

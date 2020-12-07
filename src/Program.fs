@@ -1,27 +1,27 @@
-﻿open System
+﻿module OneDriveCLI.Program
+
+open System
 open Microsoft.Identity.Client
 open Microsoft.Graph
 open Microsoft.Graph.Auth
 open System.IO
-open Domain
-open CommandLine
-open OneDriveAPI
-open Main
+open OneDriveCLI.Modules
+open OneDriveCLI.Core.OneDriveAPI
+open OneDriveCLI.Core.Domain
+open OneDriveCLI.Actors
 
 [<EntryPoint>]
 let main argv =
 
     //let args = CommandLine.doParse argv
     let args = {
-        Direction = Down
-        Local = Some @"C:\Repos\onedrive-cli\temp"
-        Remote = None
-        Threads = Some 10
-        DryRun = false
-        Verbose = true
+        CommandLine.Direction = CommandLine.Down
+        CommandLine.Local = Some @"C:\Repos\onedrive-cli\temp"
+        CommandLine.Remote = Some "Documents"
+        CommandLine.Threads = Some 10
+        CommandLine.DryRun = false
+        CommandLine.Verbose = true
     }
-
-    let log = Logging.simpleLogger
 
     let clientId = "52b727d4-693f-4a5c-b420-5e9d0afaf8c6"
     let tokenStorage = "user.token"
@@ -55,24 +55,28 @@ let main argv =
 
     async {
         let! drive = api.GetDrive ()
-        Output.writer.printfn (sprintf "Drive details Name = %s, Id = %s" drive.Name drive.Id) 
+        Output.writer.printfn "Drive details Name = %s, Id = %s" drive.Name drive.Id
 
         let localFolder = 
             args.Local 
             |> Option.defaultValue Environment.CurrentDirectory
             |> DirectoryInfo
-            |> (fun x -> {Location = "/"; DirectoryInfo = x})
+            |> (fun x -> {Location = {Folder = ""; Name = ""}; DirectoryInfo = x})
 
         let! remoteFolder = 
             args.Remote
             |> Option.map api.GetFolder
             |> Option.defaultValue (Async.retn drive.Root)
 
+        let direction = match args.Direction with CommandLine.Up -> Up | CommandLine.Down -> Down
+        let localPath = args.Local |> Option.defaultValue (Directory.GetCurrentDirectory())
+        let remotePath = args.Remote |> Option.defaultValue ""
+
         // Kick off processing
         (Some localFolder, Some remoteFolder) |> Job.Scan |> Main.queueJob
 
         // Start workers
-        do [1 .. args.Threads.Value] |> Seq.iter (Worker.start api args.Direction args.DryRun args.Local.Value)
+        do [1 .. args.Threads.Value] |> Seq.iter (Worker.start api direction args.DryRun localPath remotePath)
 
         // Wait for completion
         do! Main.runToCompletion ()

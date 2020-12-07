@@ -1,7 +1,10 @@
-﻿module CommandLine
+﻿module OneDriveCLI.Modules.CommandLine
 
 open Argu
-open Domain
+
+type Direction =
+    | Up
+    | Down
 
 type Arguments = {
     Direction : Direction
