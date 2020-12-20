@@ -22,7 +22,6 @@ type private CollectorMsg =
     | Report of CollectorReport
     | Get of AsyncReplyChannel<CollectorStatus>
 
-// TODO: Collect updates from work that's been done
 let private collector = MailboxProcessor.Start(fun inbox -> 
 
     let rec loop s = async {
@@ -30,7 +29,7 @@ let private collector = MailboxProcessor.Start(fun inbox ->
         
         let newStatus = 
             match message with 
-            | Report (Download (RemoteFile d)) -> {s with DownloadedFiles = s.DownloadedFiles + 1; DownloadedBytes = s.DownloadedBytes + d.Size}
+            | Report (Download (RemoteFile d)) -> {s with DownloadedFiles = s.DownloadedFiles + 1; DownloadedBytes = s.DownloadedBytes + d.Length }
             | Report (Download (RemoteFolder d)) -> {s with DownloadedFolders = s.DownloadedFolders + 1}
             | Report (Upload (LocalFile d)) -> {s with UploadedFiles = s.UploadedFiles + 1; UploadedBytes = s.UploadedBytes + d.FileInfo.Length}
             | Report (Upload (LocalFolder d)) -> {s with UploadedFolders = s.UploadedFolders + 1}

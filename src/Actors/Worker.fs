@@ -1,12 +1,13 @@
 ﻿module OneDriveCLI.Actors.Worker
 
 open System.IO
-open Main
 open OneDriveCLI.Core.OneDriveAPI
 open OneDriveCLI.Core.Domain
 open OneDriveCLI.Modules
 
-let start (api : OneDriveAPIClient) (direction : Direction) (dryRun : bool) (localPath : string) (remotePath : string) id = 
+type WorkerID = int
+
+let start (api : OneDriveAPIClient) direction dryRun localPath queueJob tryGetJob id = 
 
     let toUploadDownload local remote =  
         match direction, local, remote with
@@ -76,30 +77,37 @@ let start (api : OneDriveAPIClient) (direction : Direction) (dryRun : bool) (loc
             | None, None -> failwith "Impossible case"
 
         squash local remote 
-        |> Seq.iter (proc >> Seq.iter Main.queueJob)
+        |> Seq.iter (proc >> Seq.iter queueJob)
     }
 
-    let uploadFile file = async {
-        file |> LocalFile |> Collector.Upload |> Collector.report
+    let uploadFile (file : LocalFile) = async {
         if dryRun then 
             Output.writer.printfn "Would upload %s" file.Location.FullName
         else
-            // TODO: Report progress and item
-            let progress = {new System.IProgress<_> with member __.Report _ = ()}
+            let progress = {
+                new System.IProgress<_> with 
+                member __.Report progress = 
+                    let pct = if progress = 0L then 0m else decimal(progress * 100L) / decimal(file.FileInfo.Length)
+                    Output.writer.printfn "Uploading %s (%.0f%%)" file.Location.FullName pct
+            }
+
             let! _item = api.UploadFile file progress
-            Output.writer.printfn "Uploaded %s" file.Location.FullName
+            Output.writer.printfn "Uploaded %s (Done)" file.Location.FullName
+
+        file |> LocalFile |> Collector.Upload |> Collector.report
     }
 
     let uploadFolder (folder : LocalFolder) = async {
-        folder |> LocalFolder |> Collector.Upload |> Collector.report
         if dryRun then 
             Output.writer.printfn "Would create remote folder %s" folder.Location.FullName
         else
             do! api.CreateFolder folder.Location folder.DirectoryInfo.Name |> Async.Ignore
+
+        folder |> LocalFolder |> Collector.Upload |> Collector.report
     }
 
     let downloadFile (file : RemoteFile) = async {
-        file |> RemoteFile |> Collector.Download |> Collector.report
+        
         if dryRun then
             Output.writer.printfn "Would download %s" file.Location.FullName
         else 
@@ -118,10 +126,11 @@ let start (api : OneDriveAPIClient) (direction : Direction) (dryRun : bool) (loc
             targetFile.LastAccessTime <- file.Updated
             targetFile.LastWriteTime <- file.Updated
             Output.writer.printfn "Downloaded %s" file.Location.FullName
+
+        file |> RemoteFile |> Collector.Download |> Collector.report
     }
 
     let downloadFolder (folder : RemoteFolder) = 
-        folder |> RemoteFolder |> Collector.Download |> Collector.report
         if dryRun then
             Output.writer.printfn "Would create local folder %s" folder.Location.Name
         else 
@@ -135,9 +144,11 @@ let start (api : OneDriveAPIClient) (direction : Direction) (dryRun : bool) (loc
             targetDirectory.LastWriteTime <- folder.Updated
             Output.writer.printfn "Created local folder %s" targetDirectory.FullName
 
+        folder |> RemoteFolder |> Collector.Download |> Collector.report
+
     MailboxProcessor<unit>.Start(fun _ ->
         let rec loop () = async {
-            let! job = Main.tryGetJob id
+            let! job = tryGetJob id
             
             match job with
             | None -> do! Async.Sleep(100) // No work to do right now 
@@ -153,29 +164,27 @@ let start (api : OneDriveAPIClient) (direction : Direction) (dryRun : bool) (loc
                 do! uploadFolder f
             | Some (Job.Compare (local, remote)) -> 
                 match (local, remote) with
-                | LocalFolder localFolder, RemoteFolder remoteFolder -> 
-                    // TODO: Check folder attributes
-                    let same = true
-
-                    if same then
-                        (local, remote) |> Collector.Same |> Collector.report
-
+                | LocalFolder _, RemoteFolder _ -> 
+                    (local, remote) |> Collector.Same |> Collector.report
                 | LocalFile localFile, RemoteFile remoteFile -> 
                     let! same = async {
                         match remoteFile with
-                        | {SHA1 = remoteHash} when not (System.String.IsNullOrEmpty(remoteHash)) ->
+                        | {SHA1 = (Some remoteHash)} ->
                             let hash = Hasher.generateHash Hasher.SHA1 localFile.FileInfo
                             return hash = remoteHash
-                        | {QuickXOR = remoteHash} when not (System.String.IsNullOrEmpty(remoteHash)) ->
+                        | {QuickXOR = (Some remoteHash)} ->
                             let hash = Hasher.generateHash Hasher.QuickXOR localFile.FileInfo
                             return hash = remoteHash
-                        | _ -> return failwith "No valid remote hashes"
+                        | {Length = 0L} ->
+                            return true
+                        | _ -> 
+                            return failwithf "No hashes found, unable to process file %s" localFile.Location.FullName
                     }
 
                     if same then
                         (local, remote) |> Collector.Same |> Collector.report
                     else
-                        toUploadDownload (Some local) (Some remote) |> List.iter Main.queueJob
+                        toUploadDownload (Some local) (Some remote) |> List.iter queueJob
 
                 | LocalFolder _, RemoteFile _
                 | LocalFile _, RemoteFolder _ ->
@@ -184,6 +193,5 @@ let start (api : OneDriveAPIClient) (direction : Direction) (dryRun : bool) (loc
             return! loop ()
         }
         loop ()
-    )
-    |> ignore
+    ) |> ignore
 

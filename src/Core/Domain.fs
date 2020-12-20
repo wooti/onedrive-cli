@@ -30,9 +30,9 @@ type RemoteFile = {
     DriveID : string
     Created : DateTime
     Updated : DateTime
-    SHA1 : string
-    QuickXOR : string
-    Size : int64
+    SHA1 : string option
+    QuickXOR : string option
+    Length : int64
 }
 
 type RemoteFolder = {
@@ -59,7 +59,6 @@ type Drive = {
     Type : string
     Size : int64
     Used : int64
-    Root : RemoteFolder
 }
 
 type Direction =

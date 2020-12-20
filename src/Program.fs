@@ -15,9 +15,9 @@ let main argv =
 
     //let args = CommandLine.doParse argv
     let args = {
-        CommandLine.Direction = CommandLine.Down
+        CommandLine.Direction = CommandLine.Up
         CommandLine.Local = Some @"C:\Repos\onedrive-cli\temp"
-        CommandLine.Remote = Some "Documents"
+        CommandLine.Remote = Some "CLI"
         CommandLine.Threads = Some 10
         CommandLine.DryRun = false
         CommandLine.Verbose = true
@@ -39,9 +39,9 @@ let main argv =
         Threading.Tasks.Task.CompletedTask
 
     // Create an authentication provider by passing in a client application and graph scopes.
-    let authProvider = new DeviceCodeProvider(application, ["files.read.all"], (fun dcr -> someCallback dcr))
+    let authProvider = new DeviceCodeProvider(application, ["Files.ReadWrite.All"], (fun dcr -> someCallback dcr))
     
-    // TODO: Run with ChaosHandler
+    // TODO: Test run with ChaosHandler
 
     // Create a new instance of GraphServiceClient with the authentication provider.
     let client = new GraphServiceClient(authProvider)
@@ -51,7 +51,14 @@ let main argv =
 
     // https://docs.microsoft.com/en-us/graph/sdks/large-file-upload?tabs=csharp
 
-    let api = new OneDriveAPIClient(client)
+    let remoteRoot = 
+        args.Remote |> Option.map (fun remote ->
+            let result = remote.Replace('\\', '/')
+            if result.StartsWith('/') then result.Substring(1) else result
+        )
+        |> Option.defaultValue ""
+
+    let api = new OneDriveAPIClient(client, remoteRoot)
 
     async {
         let! drive = api.GetDrive ()
@@ -63,20 +70,15 @@ let main argv =
             |> DirectoryInfo
             |> (fun x -> {Location = {Folder = ""; Name = ""}; DirectoryInfo = x})
 
-        let! remoteFolder = 
-            args.Remote
-            |> Option.map api.GetFolder
-            |> Option.defaultValue (Async.retn drive.Root)
-
+        let! remoteFolder = api.GetRoot ()
         let direction = match args.Direction with CommandLine.Up -> Up | CommandLine.Down -> Down
         let localPath = args.Local |> Option.defaultValue (Directory.GetCurrentDirectory())
-        let remotePath = args.Remote |> Option.defaultValue ""
+
+        // Initialise the main worker
+        Main.initialise args.Threads.Value api direction args.DryRun localPath
 
         // Kick off processing
         (Some localFolder, Some remoteFolder) |> Job.Scan |> Main.queueJob
-
-        // Start workers
-        do [1 .. args.Threads.Value] |> Seq.iter (Worker.start api direction args.DryRun localPath remotePath)
 
         // Wait for completion
         do! Main.runToCompletion ()

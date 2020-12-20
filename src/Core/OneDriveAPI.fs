@@ -4,7 +4,7 @@ open Microsoft.Graph
 open Domain
 open OneDriveCLI.Modules
 
-type OneDriveAPIClient (client : GraphServiceClient) = 
+type OneDriveAPIClient (client : GraphServiceClient, remoteRoot : string) = 
 
     let toLocation (driveItem: Microsoft.Graph.DriveItem) =
 
@@ -12,8 +12,10 @@ type OneDriveAPIClient (client : GraphServiceClient) =
             let parentPath = driveItem.ParentReference.Path
             if parentPath = null then 
                 ""
-            else 
-                let relativePath = parentPath.Substring(parentPath.IndexOf("root:") + 5)
+            else if parentPath = "/drive/root:" then
+                ""
+            else
+                let relativePath = parentPath.Substring(parentPath.IndexOf("root:/" + remoteRoot) + remoteRoot.Length + 6)
                 if relativePath.StartsWith('/') then relativePath.Substring(1) else relativePath
 
         {Folder = path; Name = driveItem.Name}
@@ -32,9 +34,9 @@ type OneDriveAPIClient (client : GraphServiceClient) =
         DriveID = driveItem.ParentReference.DriveId
         Created = driveItem.CreatedDateTime.Value.DateTime
         Updated = driveItem.LastModifiedDateTime.Value.DateTime
-        SHA1 = driveItem.File.Hashes.Sha1Hash
-        QuickXOR = driveItem.File.Hashes.QuickXorHash
-        Size = driveItem.Size.Value
+        SHA1 = if driveItem.File.Hashes <> null && driveItem.File.Hashes.Sha1Hash <> null then Some driveItem.File.Hashes.Sha1Hash else None
+        QuickXOR = if driveItem.File.Hashes <> null && driveItem.File.Hashes.QuickXorHash <> null then Some driveItem.File.Hashes.QuickXorHash else None
+        Length = driveItem.Size.Value
     }
 
     let toPackage (driveItem: Microsoft.Graph.DriveItem) = {
@@ -43,21 +45,19 @@ type OneDriveAPIClient (client : GraphServiceClient) =
         DriveID = driveItem.ParentReference.DriveId
         Created = driveItem.CreatedDateTime.Value.DateTime
         Updated = driveItem.LastModifiedDateTime.Value.DateTime
-        SHA1 = ""
-        QuickXOR = ""
-        Size = driveItem.Size.Value
+        SHA1 = None
+        QuickXOR = None
+        Length = driveItem.Size.Value
     }
 
-    let getDrive = async {
+    let toDto dt = 
+        new System.DateTimeOffset(dt) |> System.Nullable
+
+    let getDrive () = async {
 
         let! drive =
             client.Me.Drive.Request().GetAsync() 
             |> Async.AwaitTask
-
-        let! rootFolder = 
-            client.Drives.Item(drive.Id).Root.Request().GetAsync() 
-            |> Async.AwaitTask
-            |> Async.map toFolder
 
         return {
             Name = drive.Name
@@ -65,7 +65,6 @@ type OneDriveAPIClient (client : GraphServiceClient) =
             Type = drive.DriveType
             Size = drive.Quota.Total.GetValueOrDefault()
             Used = drive.Quota.Used.GetValueOrDefault()
-            Root = rootFolder
         }
     }
 
@@ -91,9 +90,9 @@ type OneDriveAPIClient (client : GraphServiceClient) =
         return items |> Seq.map toRemoteItem
     }
 
-    let getPathFolder path = async {
+    let getRootFolder () = async {
         return!
-            client.Me.Drive.Root.ItemWithPath(path).Request().GetAsync()
+            client.Me.Drive.Root.ItemWithPath(remoteRoot).Request().GetAsync()
             |> Async.AwaitTask
             |> Async.map toFolder
     }
@@ -105,32 +104,62 @@ type OneDriveAPIClient (client : GraphServiceClient) =
     }
 
     let uploadFile (file : LocalFile) progress = async {
-        let props = 
-            new DriveItemUploadableProperties (
-                FileSize = (file.FileInfo.Length |> System.Nullable),
-                AdditionalData = (["@microsoft.graph.conflictBehavior", box "rename"] |> dict)
-            )
-        let! uploadSession =  
-            client.Me.Drive.Root.ItemWithPath(file.Location.Folder + "/" + file.FileInfo.Name).CreateUploadSession(props).Request().PostAsync()
-            |> Async.AwaitTask
 
-        let maxSliceSize = 320 * 1024;
-        let fileUploadTask = new LargeFileUploadTask<DriveItem>(uploadSession, file.FileInfo.OpenRead(), maxSliceSize);
+        // Upload small files directly
+        if file.FileInfo.Length < 1024L * 1024L then
 
-        return! fileUploadTask.UploadAsync(progress)
-        |> Async.AwaitTask
-        |> Async.map (fun a -> if a.UploadSucceeded then a.ItemResponse else failwith "Upload failed")
+            let target = remoteRoot + "/" + file.Location.FullName
+            let! uploadedItem = 
+                client.Me.Drive.Root.ItemWithPath(target).Content.Request().PutAsync(file.FileInfo.OpenRead())
+                |> Async.AwaitTask
+
+            let timestamps = new DriveItem (FileSystemInfo = new FileSystemInfo(CreatedDateTime = (file.FileInfo.CreationTimeUtc |> toDto), LastModifiedDateTime = (file.FileInfo.LastWriteTimeUtc |> toDto)))
+            return! client.Me.Drive.Items.Item(uploadedItem.Id).Request().UpdateAsync(timestamps)
+                |> Async.AwaitTask
+                |> Async.map toFile
+
+
+        // Do a multi-part resumable upload
+        else
+
+            let _props = 
+                new DriveItemUploadableProperties (
+                    FileSize = (file.FileInfo.Length |> System.Nullable)
+                    //AdditionalData = (["@microsoft.graph.conflictBehavior", box "replace"] |> dict)
+                )
+            let! uploadSession =  
+                client.Me.Drive.Root.ItemWithPath(remoteRoot + "/" + file.Location.FullName).CreateUploadSession().Request().PostAsync()
+                |> Async.AwaitTask
+
+            let maxSliceSize = 320 * 1024 * 16; // 5MB
+            let fileUploadTask = new LargeFileUploadTask<DriveItem>(uploadSession, file.FileInfo.OpenRead(), maxSliceSize);
+
+            try
+                return! fileUploadTask.UploadAsync(progress)
+                |> Async.AwaitTask
+                |> Async.map (fun a -> if a.UploadSucceeded then a.ItemResponse else failwith "Upload failed")
+                |> Async.map toFile
+            with ex ->
+                Output.writer.dprintfn "Unable to upload file %s due to %s" file.Location.FullName ex.Message
+                return raise ex
     }
 
     let createFolder (location : Location) name = async {
-        let folder = new DriveItem (Name = name, Folder = new Folder())
-        return! 
-            client.Drive.Root.ItemWithPath(location.Folder).Children.Request().AddAsync(folder)
-            |> Async.AwaitTask
+
+        try
+            let folder = new DriveItem (Folder = new Folder())
+            let target = remoteRoot + "/" + location.FullName
+            return! 
+                client.Me.Drive.Root.ItemWithPath(target).Request().UpdateAsync(folder)
+                |> Async.AwaitTask
+                |> Async.map toFolder
+        with ex ->
+            Output.writer.dprintfn "Unable to create folder /%s/%s/%s due to %s" remoteRoot location.Folder name ex.Message
+            return raise ex
     }
 
-    member __.GetDrive () = getDrive
-    member __.GetFolder path = getPathFolder path
+    member __.GetDrive () = getDrive ()
+    member __.GetRoot () = getRootFolder ()
     member __.GetAllChildren folder = getAllItems folder
     member __.CreateFolder location name = createFolder location name
     member __.DownloadFile file = downloadFile file    

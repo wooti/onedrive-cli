@@ -2,12 +2,12 @@
 
 open OneDriveCLI.Core.Domain
 open OneDriveCLI.Modules
-
-type WorkerID = int
+open OneDriveCLI.Core.OneDriveAPI
+open Worker
 
 type private ProcessMsg = 
     | Job of Job
-    | Status of AsyncReplyChannel<Job array * Map<WorkerID, Job>>
+    | Status of AsyncReplyChannel<Job array * Map<WorkerID, Job option>>
     | RequestJob of WorkerID * AsyncReplyChannel<Job option> 
 
 let private processor = MailboxProcessor.Start(fun inbox ->
@@ -26,10 +26,10 @@ let private processor = MailboxProcessor.Start(fun inbox ->
                 match queue.TryDequeue () with
                 | true, item -> 
                     replyChannel.Reply (Some item)
-                    activeWorkers |> Map.add workerID item
+                    activeWorkers |> Map.add workerID (Some item)
                 | false, _ -> 
                     replyChannel.Reply None
-                    activeWorkers |> Map.remove workerID
+                    activeWorkers |> Map.add workerID None
 
         return! loop workersNow
     }
@@ -41,15 +41,33 @@ let queueJob job =
 let tryGetJob workerID = 
     processor.PostAndAsyncReply (fun reply -> RequestJob (workerID, reply))
 
-let runToCompletion () = async {
-    let mutable finished = false
+let initialise threads (api : OneDriveAPIClient) direction dryRun localPath = 
+    [1 .. threads] |> Seq.iter (Worker.start api direction dryRun localPath queueJob tryGetJob)
 
-    while not finished do
+let runToCompletion () = async {
+    
+    let rec reportWhileRunning () = async {
         do! Async.Sleep 500
-        let! queue, active = processor.PostAndAsyncReply (fun reply -> ProcessMsg.Status reply)
+        let! queue, workers = processor.PostAndAsyncReply (fun reply -> ProcessMsg.Status reply)
         let! status = Collector.get ()
-        Output.writer.header 0 (sprintf "Queue size: %d with %d active workers " queue.Length active.Count)
-        Output.writer.header 1 (sprintf "Downloaded Files: %d (%d KB), Uploaded Files %d (%d KB), Unchanged Files: %d " status.DownloadedFiles (status.DownloadedBytes / 1024L) status.UploadedFiles (status.UploadedBytes / 1024L) status.UnchangedFiles)
-        active |> Seq.iteri (fun i (KeyValue(x,y)) -> Output.writer.header (i + 2) (sprintf "%d: %A" x y.Description))
-        finished <- queue.Length = 0 && active.IsEmpty
-    } 
+        let active = workers |> Map.toSeq |> Seq.choose snd |> Seq.length
+        Output.writer.header 0 (sprintf "Queue size: %d with %d/%d active workers " queue.Length active workers.Count)
+        Output.writer.header 1 (sprintf "Downloaded Files: %d (%s), Uploaded Files %d (%s), Unchanged Files: %d " status.DownloadedFiles (status.DownloadedBytes |> Output.toReadableSize) status.UploadedFiles (status.UploadedBytes |> Output.toReadableSize) status.UnchangedFiles)
+        workers |> Seq.iteri (fun i (KeyValue(x,y)) -> Output.writer.header (i + 2) (sprintf "%-3d: %s" x (y |> Option.map (fun j -> j.Description) |> Option.defaultValue "<Idle>")))
+        
+        if queue.Length > 0 || active > 0 then 
+            do! reportWhileRunning ()
+    }
+
+    let sw = System.Diagnostics.Stopwatch.StartNew ()
+    do! reportWhileRunning ()
+    sw.Stop ()
+    
+    // Print final status
+    let! status = Collector.get ()
+    Output.writer.dprintfn "All done..."
+    Output.writer.dprintfn "Downloaded Files: %d (%s)" status.DownloadedFiles (status.DownloadedBytes |> Output.toReadableSize)
+    Output.writer.dprintfn "Uploaded Files %d (%s)" status.UploadedFiles (status.UploadedBytes |> Output.toReadableSize)
+    Output.writer.dprintfn "Unchanged Files: %d" status.UnchangedFiles
+    Output.writer.dprintfn "Time Taken: %O" sw.Elapsed
+}
