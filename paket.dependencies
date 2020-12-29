@@ -8,6 +8,5 @@ nuget FSharp.Core
 nuget Microsoft.Graph.Auth
 nuget Microsoft.Identity.Client
 nuget Microsoft.Extensions.FileSystemGlobbing
-nuget TaskBuilder.fs
 nuget Argu
 nuget Goblinfactory.Konsole

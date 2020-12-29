@@ -576,7 +576,3 @@ NUGET
       System.Threading (>= 4.3)
       System.Xml.ReaderWriter (>= 4.3)
       System.Xml.XmlDocument (>= 4.3)
-    TaskBuilder.fs (2.1)
-      FSharp.Core (>= 4.1.17)
-      NETStandard.Library (>= 1.6.1)
-      System.ValueTuple (>= 4.4)
