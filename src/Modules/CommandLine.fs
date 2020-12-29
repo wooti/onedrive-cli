@@ -14,7 +14,6 @@ type Arguments = {
     IgnoreFile : string option
     Threads : int option
     DryRun : bool
-    Verbose : bool
 }
 
 type private CliArguments =
@@ -25,7 +24,7 @@ type private CliArguments =
     | [<Unique>] Ignore_File of string
     | [<Unique; AltCommandLine("-t")>] Threads of int
     | [<AltCommandLine("-n")>] Dry_Run
-    | [<AltCommandLine("-v")>] Verbose
+
 with
     interface IArgParserTemplate with
         member s.Usage =
@@ -37,7 +36,6 @@ with
             | Ignore_File _ -> "file containing globs to ignore"
             | Threads _ -> "number of threads to run on"
             | Dry_Run _ -> "don't make any changes"
-            | Verbose _ -> "verbose output"
 
 let doParse args = 
 
@@ -52,5 +50,4 @@ let doParse args =
         IgnoreFile = results.TryGetResult Ignore_File
         Threads = results.TryGetResult Threads
         DryRun = results.Contains Dry_Run
-        Verbose = results.Contains Verbose
     }
