@@ -1,4 +1,4 @@
-﻿module OneDriveCLI.Modules.Globber
+﻿module OneDriveCLI.Utilities.Globber
 
 open Microsoft.Extensions.FileSystemGlobbing
 open System.IO

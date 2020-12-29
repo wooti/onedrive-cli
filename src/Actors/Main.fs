@@ -1,8 +1,7 @@
 ﻿module OneDriveCLI.Actors.Main
 
 open OneDriveCLI.Core.Domain
-open OneDriveCLI.Modules
-open Worker
+open OneDriveCLI.Utilities
 
 type private ProcessMsg = 
     | Job of Job

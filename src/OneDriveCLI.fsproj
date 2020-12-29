@@ -9,18 +9,19 @@
   </PropertyGroup>
   <ItemGroup>
     <Content Include="Properties\launchSettings.json" />
-    <Compile Include="Modules\CommandLine.fs" />
-    <Compile Include="Modules\Globber.fs" />
-    <Compile Include="Modules\Async.fs" />
-    <Compile Include="Modules\Output.fs" />
-    <Compile Include="Modules\TokenSaver.fs" />
-    <Compile Include="Modules\Hasher.fs" />
+    <Compile Include="Utilities\Globber.fs" />
+    <Compile Include="Utilities\Async.fs" />
+    <Compile Include="Utilities\Output.fs" />
+    <Compile Include="Utilities\TokenSaver.fs" />
+    <Compile Include="Utilities\Hasher.fs" />
     <Compile Include="Core\Domain.fs" />
+    <Compile Include="Core\CommandLine.fs" />
     <Compile Include="Core\OneDriveAPI.fs" />
     <Compile Include="Actors\Collector.fs" />
     <Compile Include="Actors\Worker.fs" />
     <Compile Include="Actors\Main.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
+  <ItemGroup />
   <Import Project="..\.paket\Paket.Restore.targets" />
 </Project>

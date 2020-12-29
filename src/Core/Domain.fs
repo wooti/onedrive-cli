@@ -1,5 +1,4 @@
 ﻿module OneDriveCLI.Core.Domain
-open System
 open System.IO
 
 type Location = {
@@ -28,8 +27,8 @@ type RemoteFile = {
     Location : Location
     ID : string
     DriveID : string
-    Created : DateTime
-    Updated : DateTime
+    Created : System.DateTime
+    Updated : System.DateTime
     SHA1 : string option
     QuickXOR : string option
     Length : int64
@@ -39,8 +38,8 @@ type RemoteFolder = {
     Location : Location
     ID : string
     DriveID : string
-    Created : DateTime
-    Updated : DateTime
+    Created : System.DateTime
+    Updated : System.DateTime
 }
 
 type RemoteItem =
@@ -81,3 +80,5 @@ type Job =
             sprintf "Download: %s" remote.Location.FullName
         | Upload (local) -> 
             sprintf "Upload: %s" local.Location.FullName
+
+type WorkerID = int

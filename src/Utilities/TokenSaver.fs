@@ -1,4 +1,4 @@
-﻿module OneDriveCLI.Modules.TokenSaver
+﻿module OneDriveCLI.Utilities.TokenSaver
 
 open Microsoft.Identity.Client
 open System.IO

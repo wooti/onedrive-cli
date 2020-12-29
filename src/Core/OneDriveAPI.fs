@@ -1,8 +1,8 @@
 ﻿module OneDriveCLI.Core.OneDriveAPI
 
 open Microsoft.Graph
-open Domain
-open OneDriveCLI.Modules
+open OneDriveCLI.Core.Domain
+open OneDriveCLI.Utilities
 
 type OneDriveAPIClient (client : GraphServiceClient, remoteRoot : string) = 
 

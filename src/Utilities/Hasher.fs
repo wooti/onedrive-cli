@@ -1,4 +1,4 @@
-﻿module Hasher
+﻿module OneDriveCLI.Utilities.Hasher
 
 open System
 open System.IO
@@ -59,6 +59,7 @@ let private hashInternal (stream : Stream) =
 
     returnBlock
 
+/// Implementation of Microsoft's QuickXOR hash
 let private getHash (stream : Stream) length = 
 
     let longToBlock (long : int64) =

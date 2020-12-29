@@ -1,4 +1,4 @@
-﻿module OneDriveCLI.Modules.CommandLine
+﻿module OneDriveCLI.Core.CommandLine
 
 open Argu
 

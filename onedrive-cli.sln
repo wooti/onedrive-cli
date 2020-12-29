@@ -10,7 +10,9 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Build", "Build", "{57C9F4D7
 		.gitattributes = .gitattributes
 		.gitignore = .gitignore
 		build.cmd = build.cmd
+		.config\dotnet-tools.json = .config\dotnet-tools.json
 		paket.dependencies = paket.dependencies
+		src\paket.references = src\paket.references
 	EndProjectSection
 EndProject
 Global

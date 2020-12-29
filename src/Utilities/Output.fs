@@ -1,7 +1,6 @@
-﻿module OneDriveCLI.Modules.Output
+﻿module OneDriveCLI.Utilities.Output
 
 open Konsole
-open System.IO
 
 System.Console.CursorVisible <- false
 

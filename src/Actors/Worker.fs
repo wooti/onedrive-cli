@@ -3,17 +3,14 @@
 open System.IO
 open OneDriveCLI.Core.OneDriveAPI
 open OneDriveCLI.Core.Domain
-open OneDriveCLI.Modules
-open OneDriveCLI.Modules.Globber
-
-type WorkerID = int
+open OneDriveCLI.Utilities
 
 type WorkerArgs = {
     API : OneDriveAPIClient
     Direction : Direction
     DryRun : bool
     LocalPath : string
-    Ignored : IgnoreGlobber
+    Ignored : Globber.IgnoreGlobber
 }
 
 let start args queueJob tryGetJob id = 

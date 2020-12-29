@@ -5,12 +5,10 @@ open Microsoft.Identity.Client
 open Microsoft.Graph
 open Microsoft.Graph.Auth
 open System.IO
-open OneDriveCLI.Modules
-open OneDriveCLI.Core.OneDriveAPI
+open OneDriveCLI.Utilities
+open OneDriveCLI.Core
 open OneDriveCLI.Core.Domain
 open OneDriveCLI.Actors
-open OneDriveCLI.Actors.Worker
-open OneDriveCLI.Modules.Globber
 
 [<EntryPoint>]
 let main argv =
@@ -56,7 +54,7 @@ let main argv =
         )
         |> Option.defaultValue ""
 
-    let api = new OneDriveAPIClient(client, remoteRoot)
+    let api = new OneDriveAPI.OneDriveAPIClient(client, remoteRoot)
 
     async {
         let! drive = api.GetDrive ()
@@ -64,11 +62,11 @@ let main argv =
 
         // Initialise the main worker
         let workerConfig = {
-            API = api
-            Direction = match args.Direction with CommandLine.Up -> Up | CommandLine.Down -> Down
-            DryRun = args.DryRun
-            LocalPath = args.Local |> Option.defaultValue (Directory.GetCurrentDirectory())
-            Ignored = new IgnoreGlobber(args.Ignore, args.IgnoreFile)
+            Worker.API = api
+            Worker.Direction = match args.Direction with CommandLine.Up -> Up | CommandLine.Down -> Down
+            Worker.DryRun = args.DryRun
+            Worker.LocalPath = args.Local |> Option.defaultValue (Directory.GetCurrentDirectory())
+            Worker.Ignored = new Globber.IgnoreGlobber(args.Ignore, args.IgnoreFile)
         }
 
         Main.initialise (args.Threads |> Option.defaultValue 1) workerConfig
