@@ -1,8 +1,16 @@
 {
   "profiles": {
-    "OneDriveCLI": {
+    "OneDriveCLI (Up Test)": {
       "commandName": "Project",
-      "commandLineArgs": "--direction UP"
+      "commandLineArgs": "--direction UP --local C:\\Repos\\onedrive-cli\\temp --remote CLI --threads 10 --verbose"
+    },
+    "OneDriveCLI (Down Test)": {
+      "commandName": "Project",
+      "commandLineArgs": "--direction Down --local C:\\Repos\\onedrive-cli\\temp --remote CLI --threads 10 --verbose"
+    },
+    "OneDriveCLI (Up Pics Test)": {
+      "commandName": "Project",
+      "commandLineArgs": "--direction Up --local P:\\2006 --remote Pictures\\2006 --dry-run --threads 10 --verbose"
     }
   }
 }

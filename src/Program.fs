@@ -13,15 +13,7 @@ open OneDriveCLI.Actors
 [<EntryPoint>]
 let main argv =
 
-    //let args = CommandLine.doParse argv
-    let args = {
-        CommandLine.Direction = CommandLine.Up
-        CommandLine.Local = Some @"C:\Repos\onedrive-cli\temp"
-        CommandLine.Remote = Some "CLI"
-        CommandLine.Threads = Some 10
-        CommandLine.DryRun = false
-        CommandLine.Verbose = true
-    }
+    let args = CommandLine.doParse argv
 
     let clientId = "52b727d4-693f-4a5c-b420-5e9d0afaf8c6"
     let tokenStorage = "user.token"
