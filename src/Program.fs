@@ -35,16 +35,9 @@ let main argv =
 
     // Create an authentication provider by passing in a client application and graph scopes.
     let authProvider = new DeviceCodeProvider(application, ["Files.ReadWrite.All"], (fun dcr -> someCallback dcr))
-    
-    // TODO: Test run with ChaosHandler
 
     // Create a new instance of GraphServiceClient with the authentication provider.
     let client = new GraphServiceClient(authProvider)
-
-    // Graph 1.0 REST API: https://docs.microsoft.com/en-us/graph/api/resources/onedrive?view=graph-rest-1.0
-    // Graph SDK .NET: https://github.com/microsoftgraph/msgraph-sdk-dotnet
-
-    // https://docs.microsoft.com/en-us/graph/sdks/large-file-upload?tabs=csharp
 
     let remoteRoot = 
         args.Remote |> Option.map (fun remote ->

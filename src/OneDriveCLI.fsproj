@@ -22,6 +22,5 @@
     <Compile Include="Actors\Main.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
-  <ItemGroup />
   <Import Project="..\.paket\Paket.Restore.targets" />
 </Project>
