@@ -9,11 +9,16 @@ open OneDriveCLI.Modules
 open OneDriveCLI.Core.OneDriveAPI
 open OneDriveCLI.Core.Domain
 open OneDriveCLI.Actors
+open OneDriveCLI.Actors.Worker
+open OneDriveCLI.Modules.Globber
 
 [<EntryPoint>]
 let main argv =
 
     let args = CommandLine.doParse argv
+
+    // Validate command line arguments
+    args.IgnoreFile |> Option.iter (fun f -> if not <| File.Exists f then failwith "Ignore file does not exist")
 
     let clientId = "52b727d4-693f-4a5c-b420-5e9d0afaf8c6"
     let tokenStorage = "user.token"
@@ -46,7 +51,8 @@ let main argv =
     let remoteRoot = 
         args.Remote |> Option.map (fun remote ->
             let result = remote.Replace('\\', '/')
-            if result.StartsWith('/') then result.Substring(1) else result
+            let result = if result.StartsWith('/') then result.Substring(1) else result
+            if result.EndsWith('/') then result.Substring(0, result.Length - 1) else result
         )
         |> Option.defaultValue ""
 
@@ -56,6 +62,18 @@ let main argv =
         let! drive = api.GetDrive ()
         Output.writer.printfn "Drive details Name = %s, Id = %s" drive.Name drive.Id
 
+        // Initialise the main worker
+        let workerConfig = {
+            API = api
+            Direction = match args.Direction with CommandLine.Up -> Up | CommandLine.Down -> Down
+            DryRun = args.DryRun
+            LocalPath = args.Local |> Option.defaultValue (Directory.GetCurrentDirectory())
+            Ignored = new IgnoreGlobber(args.Ignore, args.IgnoreFile)
+        }
+
+        Main.initialise (args.Threads |> Option.defaultValue 1) workerConfig
+
+        // Kick off processing
         let localFolder = 
             args.Local 
             |> Option.defaultValue Environment.CurrentDirectory
@@ -63,13 +81,6 @@ let main argv =
             |> (fun x -> {Location = {Folder = ""; Name = ""}; DirectoryInfo = x})
 
         let! remoteFolder = api.GetRoot ()
-        let direction = match args.Direction with CommandLine.Up -> Up | CommandLine.Down -> Down
-        let localPath = args.Local |> Option.defaultValue (Directory.GetCurrentDirectory())
-
-        // Initialise the main worker
-        Main.initialise args.Threads.Value api direction args.DryRun localPath
-
-        // Kick off processing
         (Some localFolder, Some remoteFolder) |> Job.Scan |> Main.queueJob
 
         // Wait for completion

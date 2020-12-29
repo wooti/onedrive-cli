@@ -2,7 +2,6 @@
 
 open OneDriveCLI.Core.Domain
 open OneDriveCLI.Modules
-open OneDriveCLI.Core.OneDriveAPI
 open Worker
 
 type private ProcessMsg = 
@@ -41,8 +40,8 @@ let queueJob job =
 let tryGetJob workerID = 
     processor.PostAndAsyncReply (fun reply -> RequestJob (workerID, reply))
 
-let initialise threads (api : OneDriveAPIClient) direction dryRun localPath = 
-    [1 .. threads] |> Seq.iter (Worker.start api direction dryRun localPath queueJob tryGetJob)
+let initialise threads args = 
+    [1 .. threads] |> Seq.iter (Worker.start args queueJob tryGetJob)
 
 let runToCompletion () = async {
     
@@ -52,7 +51,7 @@ let runToCompletion () = async {
         let! status = Collector.get ()
         let active = workers |> Map.toSeq |> Seq.choose snd |> Seq.length
         Output.writer.header 0 (sprintf "Queue size: %d with %d/%d active workers " queue.Length active workers.Count)
-        Output.writer.header 1 (sprintf "Downloaded Files: %d (%s), Uploaded Files %d (%s), Unchanged Files: %d " status.DownloadedFiles (status.DownloadedBytes |> Output.toReadableSize) status.UploadedFiles (status.UploadedBytes |> Output.toReadableSize) status.UnchangedFiles)
+        Output.writer.header 1 (sprintf "Downloaded Files: %d (%s), Uploaded Files %d (%s), Unchanged Files: %d, Ignored Files %d " status.DownloadedFiles (status.DownloadedBytes |> Output.toReadableSize) status.UploadedFiles (status.UploadedBytes |> Output.toReadableSize) status.UnchangedFiles status.IgnoredFiles)
         workers |> Seq.iteri (fun i (KeyValue(x,y)) -> Output.writer.header (i + 2) (sprintf "%-3d: %s" x (y |> Option.map (fun j -> j.Description) |> Option.defaultValue "<Idle>")))
         
         if queue.Length > 0 || active > 0 then 
@@ -69,5 +68,6 @@ let runToCompletion () = async {
     Output.writer.dprintfn "Downloaded Files: %d (%s)" status.DownloadedFiles (status.DownloadedBytes |> Output.toReadableSize)
     Output.writer.dprintfn "Uploaded Files %d (%s)" status.UploadedFiles (status.UploadedBytes |> Output.toReadableSize)
     Output.writer.dprintfn "Unchanged Files: %d" status.UnchangedFiles
+    Output.writer.dprintfn "Ignored Files: %d" status.IgnoredFiles
     Output.writer.dprintfn "Time Taken: %O" sw.Elapsed
 }

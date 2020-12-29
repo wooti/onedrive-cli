@@ -10,7 +10,7 @@
     },
     "OneDriveCLI (Up Pics Test)": {
       "commandName": "Project",
-      "commandLineArgs": "--direction Up --local P:\\2006 --remote Pictures\\2006 --dry-run --threads 10 --verbose"
+      "commandLineArgs": "--direction Up --local P:\\ --remote Pictures\\ --dry-run --threads 10 --verbose --ignore **/*.db"
     }
   }
 }

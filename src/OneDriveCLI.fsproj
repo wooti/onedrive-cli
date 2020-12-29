@@ -10,6 +10,7 @@
   <ItemGroup>
     <Content Include="Properties\launchSettings.json" />
     <Compile Include="Modules\CommandLine.fs" />
+    <Compile Include="Modules\Globber.fs" />
     <Compile Include="Modules\Async.fs" />
     <Compile Include="Modules\Output.fs" />
     <Compile Include="Modules\TokenSaver.fs" />

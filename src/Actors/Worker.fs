@@ -4,13 +4,22 @@ open System.IO
 open OneDriveCLI.Core.OneDriveAPI
 open OneDriveCLI.Core.Domain
 open OneDriveCLI.Modules
+open OneDriveCLI.Modules.Globber
 
 type WorkerID = int
 
-let start (api : OneDriveAPIClient) direction dryRun localPath queueJob tryGetJob id = 
+type WorkerArgs = {
+    API : OneDriveAPIClient
+    Direction : Direction
+    DryRun : bool
+    LocalPath : string
+    Ignored : IgnoreGlobber
+}
 
-    let toUploadDownload local remote =  
-        match direction, local, remote with
+let start args queueJob tryGetJob id = 
+
+    let toTransfer local remote =  
+        match args.Direction, local, remote with
         | Up, Some local, _ ->
             [local |> Job.Upload]
         | Down, _, Some remote ->
@@ -22,12 +31,26 @@ let start (api : OneDriveAPIClient) direction dryRun localPath queueJob tryGetJo
             Output.writer.printfn "Extra local file: %s" local.Location.FullName
             []
         | _ -> 
-            [] // DO NOTHING
+            failwithf "Invalid transfer case: %A %A %A" args.Direction local remote // This is not supposed to happen!
 
     let scan (localFolder : LocalFolder option) (remoteFolder : RemoteFolder option) = async {
 
+        let isIncluded (local : LocalItem option, remote : RemoteItem option) = 
+            let location = 
+                match (local,remote) with
+                | Some(item), _ -> item.Location
+                | _, Some(item) -> item.Location
+                | _ -> failwith "Impossible case"
+
+            let ignored = args.Ignored.IsIgnored location.FullName
+            if ignored then 
+                (local,remote) |> Collector.Ignored |> Collector.report
+                Output.writer.printfn "Ignored: %s" location.FullName
+            
+            not ignored
+
         let toLocation dirName name = 
-            let relative = Path.GetRelativePath(localPath, dirName).Replace('\\', '/')
+            let relative = Path.GetRelativePath(args.LocalPath, dirName).Replace('\\', '/')
             {Folder = (if relative = "." then "" else relative); Name = name}
 
         let getLocalItems folder = 
@@ -42,7 +65,7 @@ let start (api : OneDriveAPIClient) direction dryRun localPath queueJob tryGetJo
             Seq.append allFolders allFiles
 
         let getRemoteItems folder = async {
-            return! api.GetAllChildren folder
+            return! args.API.GetAllChildren folder
         }
         
         let local = localFolder |> Option.map getLocalItems |> Option.defaultValue Seq.empty
@@ -58,13 +81,13 @@ let start (api : OneDriveAPIClient) direction dryRun localPath queueJob tryGetJo
             
         let proc = function 
             | None, Some (RemoteFile file) -> 
-                toUploadDownload None (file |> RemoteItem.RemoteFile |> Some)
+                toTransfer None (file |> RemoteItem.RemoteFile |> Some)
             | None, Some (RemoteFolder folder) -> 
-                Job.Scan (None, (Some folder)) :: toUploadDownload None (folder |> RemoteItem.RemoteFolder |> Some)
+                Job.Scan (None, (Some folder)) :: toTransfer None (folder |> RemoteItem.RemoteFolder |> Some)
             | Some (LocalFile local), None -> 
-                toUploadDownload (local |> LocalItem.LocalFile |> Some) None
+                toTransfer (local |> LocalItem.LocalFile |> Some) None
             | Some (LocalFolder local), None ->
-                Job.Scan ((Some local), None) :: toUploadDownload (local |> LocalItem.LocalFolder |> Some) None
+                Job.Scan ((Some local), None) :: toTransfer (local |> LocalItem.LocalFolder |> Some) None
             | Some (LocalFolder localFolder), Some (RemoteFolder remoteFolder) -> 
                 [
                     Job.Compare (localFolder |> LocalItem.LocalFolder, remoteFolder |> RemoteItem.RemoteFolder)
@@ -77,11 +100,12 @@ let start (api : OneDriveAPIClient) direction dryRun localPath queueJob tryGetJo
             | None, None -> failwith "Impossible case"
 
         squash local remote 
+        |> Seq.filter isIncluded
         |> Seq.iter (proc >> Seq.iter queueJob)
     }
 
     let uploadFile (file : LocalFile) = async {
-        if dryRun then 
+        if args.DryRun then 
             Output.writer.printfn "Would upload %s" file.Location.FullName
         else
             let progress = {
@@ -91,29 +115,29 @@ let start (api : OneDriveAPIClient) direction dryRun localPath queueJob tryGetJo
                     Output.writer.printfn "Uploading %s (%.0f%%)" file.Location.FullName pct
             }
 
-            let! _item = api.UploadFile file progress
+            let! _item = args.API.UploadFile file progress
             Output.writer.printfn "Uploaded %s (Done)" file.Location.FullName
 
         file |> LocalFile |> Collector.Upload |> Collector.report
     }
 
     let uploadFolder (folder : LocalFolder) = async {
-        if dryRun then 
+        if args.DryRun then 
             Output.writer.printfn "Would create remote folder %s" folder.Location.FullName
         else
-            do! api.CreateFolder folder.Location folder.DirectoryInfo.Name |> Async.Ignore
+            do! args.API.CreateFolder folder.Location folder.DirectoryInfo.Name |> Async.Ignore
 
         folder |> LocalFolder |> Collector.Upload |> Collector.report
     }
 
     let downloadFile (file : RemoteFile) = async {
         
-        if dryRun then
+        if args.DryRun then
             Output.writer.printfn "Would download %s" file.Location.FullName
         else 
-            let! stream = api.DownloadFile file
+            let! stream = args.API.DownloadFile file
             let relativeLocation = file.Location.Folder.Replace('/', System.IO.Path.DirectorySeparatorChar)
-            let targetFile = FileInfo(Path.Combine(localPath, relativeLocation, file.Location.Name))
+            let targetFile = FileInfo(Path.Combine(args.LocalPath, relativeLocation, file.Location.Name))
             targetFile.Directory.Create()
 
             use fileStream = targetFile.OpenWrite ()
@@ -131,11 +155,11 @@ let start (api : OneDriveAPIClient) direction dryRun localPath queueJob tryGetJo
     }
 
     let downloadFolder (folder : RemoteFolder) = 
-        if dryRun then
+        if args.DryRun then
             Output.writer.printfn "Would create local folder %s" folder.Location.Name
         else 
             let relativeLocation = folder.Location.Folder.Replace('/', System.IO.Path.DirectorySeparatorChar)
-            let targetDirectory = DirectoryInfo(Path.Combine(localPath, relativeLocation, folder.Location.Name))
+            let targetDirectory = DirectoryInfo(Path.Combine(args.LocalPath, relativeLocation, folder.Location.Name))
             targetDirectory.Create()
 
             // Set local attributes
@@ -184,7 +208,7 @@ let start (api : OneDriveAPIClient) direction dryRun localPath queueJob tryGetJo
                     if same then
                         (local, remote) |> Collector.Same |> Collector.report
                     else
-                        toUploadDownload (Some local) (Some remote) |> List.iter queueJob
+                        toTransfer (Some local) (Some remote) |> List.iter queueJob
 
                 | LocalFolder _, RemoteFile _
                 | LocalFile _, RemoteFolder _ ->
