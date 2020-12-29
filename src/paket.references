@@ -2,6 +2,7 @@ FSharp.Core
 Microsoft.Graph
 Microsoft.Graph.Auth
 Microsoft.Identity.Client
+Microsoft.Extensions.FileSystemGlobbing
 TaskBuilder.fs
 Argu
 Goblinfactory.Konsole

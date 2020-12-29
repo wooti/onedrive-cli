@@ -8,6 +8,7 @@ NUGET
     FSharp.Core (5.0)
     Goblinfactory.Konsole (6.2)
     Microsoft.CSharp (4.7)
+    Microsoft.Extensions.FileSystemGlobbing (5.0)
     Microsoft.Graph (3.21)
       Microsoft.Graph.Core (>= 1.23)
     Microsoft.Graph.Auth (1.0.0-preview.6)
