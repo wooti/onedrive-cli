@@ -50,7 +50,7 @@ let runToCompletion () = async {
         let! status = Collector.get ()
         let active = workers |> Map.toSeq |> Seq.choose snd |> Seq.length
         Output.writer.header 0 (sprintf "Queue size: %d with %d/%d active workers " queue.Length active workers.Count)
-        Output.writer.header 1 (sprintf "Downloaded Files: %d (%s), Uploaded Files %i (%s), Unchanged Files: %i, Extra Files: %i, Ignored Files %i " status.DownloadedFiles (status.DownloadedBytes |> Output.toReadableSize) status.UploadedFiles (status.UploadedBytes |> Output.toReadableSize) status.UnchangedFiles (status.ExtraLocalFiles + status.ExtraRemoteFiles) status.IgnoredFiles)
+        Output.writer.header 1 (sprintf "Downloaded: %d (%s), Uploaded %i (%s), Unchanged: %i, Extra: %i, Ignored: %i " status.DownloadedFiles (status.DownloadedBytes |> Output.toReadableSize) status.UploadedFiles (status.UploadedBytes |> Output.toReadableSize) status.UnchangedFiles (status.ExtraLocalFiles + status.ExtraRemoteFiles) status.IgnoredFiles)
         workers |> Seq.iteri (fun i (KeyValue(x,y)) -> Output.writer.header (i + 2) (sprintf "%-3d: %s" x (y |> Option.map (fun j -> j.Description) |> Option.defaultValue "<Idle>")))
         
         if queue.Length > 0 || active > 0 then 
