@@ -50,7 +50,7 @@ let runToCompletion () = async {
         let! status = Collector.get ()
         let active = workers |> Map.toSeq |> Seq.choose snd |> Seq.length
         Output.writer.header 0 (sprintf "Queue size: %d with %d/%d active workers " queue.Length active workers.Count)
-        Output.writer.header 1 (sprintf "Downloaded Files: %d (%s), Uploaded Files %d (%s), Unchanged Files: %d, Ignored Files %d " status.DownloadedFiles (status.DownloadedBytes |> Output.toReadableSize) status.UploadedFiles (status.UploadedBytes |> Output.toReadableSize) status.UnchangedFiles status.IgnoredFiles)
+        Output.writer.header 1 (sprintf "Downloaded Files: %d (%s), Uploaded Files %i (%s), Unchanged Files: %i, Extra Files: %i, Ignored Files %i " status.DownloadedFiles (status.DownloadedBytes |> Output.toReadableSize) status.UploadedFiles (status.UploadedBytes |> Output.toReadableSize) status.UnchangedFiles (status.ExtraLocalFiles + status.ExtraRemoteFiles) status.IgnoredFiles)
         workers |> Seq.iteri (fun i (KeyValue(x,y)) -> Output.writer.header (i + 2) (sprintf "%-3d: %s" x (y |> Option.map (fun j -> j.Description) |> Option.defaultValue "<Idle>")))
         
         if queue.Length > 0 || active > 0 then 
@@ -63,10 +63,12 @@ let runToCompletion () = async {
     
     // Print final status
     let! status = Collector.get ()
-    Output.writer.dprintfn "All done..."
-    Output.writer.dprintfn "Downloaded Files: %d (%s)" status.DownloadedFiles (status.DownloadedBytes |> Output.toReadableSize)
-    Output.writer.dprintfn "Uploaded Files %d (%s)" status.UploadedFiles (status.UploadedBytes |> Output.toReadableSize)
-    Output.writer.dprintfn "Unchanged Files: %d" status.UnchangedFiles
-    Output.writer.dprintfn "Ignored Files: %d" status.IgnoredFiles
-    Output.writer.dprintfn "Time Taken: %O" sw.Elapsed
+    Output.writer.printfn "All done..."
+    Output.writer.printfn "Downloaded Files: %i (%s)" status.DownloadedFiles (status.DownloadedBytes |> Output.toReadableSize)
+    Output.writer.printfn "Uploaded Files %i (%s)" status.UploadedFiles (status.UploadedBytes |> Output.toReadableSize)
+    Output.writer.printfn "Unchanged Files: %i" status.UnchangedFiles
+    Output.writer.printfn "Extra Files: %i local, %i remote" status.ExtraLocalFiles status.ExtraRemoteFiles
+    Output.writer.printfn "Ignored Files: %i" status.IgnoredFiles
+    Output.writer.printfn "Time Taken: %O" sw.Elapsed
+    Output.writer.flush ()
 }

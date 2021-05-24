@@ -140,7 +140,8 @@ type OneDriveAPIClient (client : GraphServiceClient, remoteRoot : string) =
                 |> Async.map (fun a -> if a.UploadSucceeded then a.ItemResponse else failwith "Upload failed")
                 |> Async.map toFile
             with ex ->
-                Output.writer.dprintfn "Unable to upload file %s due to %s" file.Location.FullName ex.Message
+                Output.writer.printfn "Unable to upload file %s due to %s" file.Location.FullName ex.Message
+                Output.writer.flush ()
                 return raise ex
     }
 
@@ -154,7 +155,8 @@ type OneDriveAPIClient (client : GraphServiceClient, remoteRoot : string) =
                 |> Async.AwaitTask
                 |> Async.map toFolder
         with ex ->
-            Output.writer.dprintfn "Unable to create folder /%s/%s/%s due to %s" remoteRoot location.Folder name ex.Message
+            Output.writer.printfn "Unable to create folder /%s/%s/%s due to %s" remoteRoot location.Folder name ex.Message
+            Output.writer.flush ()
             return raise ex
     }
 

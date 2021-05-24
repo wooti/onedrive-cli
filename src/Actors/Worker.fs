@@ -23,9 +23,11 @@ let start args queueJob tryGetJob id =
         | Down, _, Some remote ->
             [remote |> Job.Download]
         | Up, None, Some remote ->
+            remote |> Item.Remote |> Collector.Extra |> Collector.report
             Output.writer.printfn "Extra remote file: %s" remote.Location.FullName
             []
         | Down, Some local, None ->
+            local |> Item.Local |> Collector.Extra |> Collector.report
             Output.writer.printfn "Extra local file: %s" local.Location.FullName
             []
         | _ -> 

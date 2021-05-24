@@ -4,6 +4,10 @@ open Konsole
 
 System.Console.CursorVisible <- false
 
+type private ThreadSafeWriterMessage =
+    | Write of string
+    | Flush of AsyncReplyChannel<unit>
+
 type SplitOutput() = 
     
     let console = new ConcurrentWriter()
@@ -16,8 +20,10 @@ type SplitOutput() =
     let threadSafeWriter = MailboxProcessor.Start(fun inbox -> 
     
         let rec loop () = async {
-            let! (message : string) = inbox.Receive ()
-            bottom.WriteLine message
+            let! (message : ThreadSafeWriterMessage) = inbox.Receive ()
+            match message with
+            | Write msg -> bottom.WriteLine msg
+            | Flush r -> r.Reply ()
     
             return! loop ()
         }
@@ -31,16 +37,14 @@ type SplitOutput() =
     /// Thread safe printing of output
     member __.printfn fmt =
         let doAfter s = 
-            sprintf "%s: %s" (System.DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")) s |> threadSafeWriter.Post
+            sprintf "%s: %s" (System.DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")) s 
+            |> ThreadSafeWriterMessage.Write 
+            |> threadSafeWriter.Post
 
-        Printf.kprintf doAfter fmt 
+        Printf.kprintf doAfter fmt
 
-    /// Direct printing of output
-    member __.dprintfn fmt =
-        let doAfter s = 
-            sprintf "%s: %s" (System.DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")) s |> bottom.WriteLine
-
-        Printf.kprintf doAfter fmt 
+    member __.flush () = 
+        threadSafeWriter.PostAndReply Flush
 
 let writer = new SplitOutput()
 

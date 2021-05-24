@@ -11,6 +11,8 @@ type CollectorStatus = {
     DownloadedBytes : int64
     UnchangedFolders : int
     UnchangedFiles : int
+    ExtraLocalFiles : int
+    ExtraRemoteFiles : int
     IgnoredFiles : int
 }
 
@@ -19,6 +21,7 @@ type CollectorReport =
     | Upload of LocalItem
     | Same of LocalItem * RemoteItem
     | Ignored of LocalItem option * RemoteItem option
+    | Extra of Item
 
 type private CollectorMsg =
     | Report of CollectorReport
@@ -37,6 +40,8 @@ let private collector = MailboxProcessor.Start(fun inbox ->
             | Report (Upload (LocalFolder d)) -> {s with UploadedFolders = s.UploadedFolders + 1}
             | Report (Same (LocalFolder d, _)) -> {s with UnchangedFolders = s.UnchangedFolders + 1}
             | Report (Same (LocalFile d, _)) -> {s with UnchangedFiles = s.UnchangedFiles + 1}
+            | Report (Extra (Local _)) -> {s with ExtraLocalFiles = s.ExtraLocalFiles + 1}
+            | Report (Extra (Remote _)) -> {s with ExtraRemoteFiles = s.ExtraRemoteFiles + 1}
             | Report (Ignored _) -> {s with IgnoredFiles = s.IgnoredFiles + 1}
             | Get r ->
                 r.Reply s
@@ -45,7 +50,7 @@ let private collector = MailboxProcessor.Start(fun inbox ->
         return! loop newStatus
     }
 
-    let status = {UploadedFiles = 0; UploadedFolders = 0; UploadedBytes = 0L; DownloadedFiles = 0; DownloadedFolders = 0; DownloadedBytes = 0L; UnchangedFiles = 0; UnchangedFolders = 0; IgnoredFiles = 0}
+    let status = {UploadedFiles = 0; UploadedFolders = 0; UploadedBytes = 0L; DownloadedFiles = 0; DownloadedFolders = 0; DownloadedBytes = 0L; UnchangedFiles = 0; UnchangedFolders = 0; ExtraLocalFiles = 0; ExtraRemoteFiles = 0; IgnoredFiles = 0}
 
     loop status
 )
