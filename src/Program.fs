@@ -60,6 +60,7 @@ let main argv =
             Worker.DryRun = args.DryRun
             Worker.LocalPath = args.Local |> Option.defaultValue (Directory.GetCurrentDirectory())
             Worker.Ignored = new Globber.IgnoreGlobber(args.Ignore, args.IgnoreFile)
+            Worker.UseHash = args.UseHash
         }
 
         Main.initialise (args.Threads |> Option.defaultValue 1) workerConfig

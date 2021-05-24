@@ -11,6 +11,7 @@ type WorkerArgs = {
     DryRun : bool
     LocalPath : string
     Ignored : Globber.IgnoreGlobber
+    UseHash : bool
 }
 
 let start args queueJob tryGetJob id = 
@@ -189,14 +190,17 @@ let start args queueJob tryGetJob id =
                     (local, remote) |> Collector.Same |> Collector.report
                 | LocalFile localFile, RemoteFile remoteFile -> 
                     let! same = async {
-                        match remoteFile with
-                        | {SHA1 = (Some remoteHash)} ->
+                        match args.UseHash, remoteFile with
+                        | true, {SHA1 = (Some remoteHash)} ->
                             let hash = Hasher.generateHash Hasher.SHA1 localFile.FileInfo
                             return hash = remoteHash
-                        | {QuickXOR = (Some remoteHash)} ->
+                        | true, {QuickXOR = (Some remoteHash)} ->
                             let hash = Hasher.generateHash Hasher.QuickXOR localFile.FileInfo
                             return hash = remoteHash
-                        | {Length = 0L} ->
+                        | false, _ ->
+                            let localDate = localFile.FileInfo.LastWriteTimeUtc.AddTicks -(localFile.FileInfo.LastWriteTimeUtc.Ticks % System.TimeSpan.TicksPerSecond)
+                            return localDate = remoteFile.Updated && localFile.FileInfo.Length = remoteFile.Length
+                        | _, {Length = 0L} ->
                             return true
                         | _ -> 
                             return failwithf "No hashes found, unable to process file %s" localFile.Location.FullName

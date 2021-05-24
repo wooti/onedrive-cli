@@ -40,4 +40,7 @@ paket-files/
 
 # Never commit tokens
 *.token
+
+# Local Dev Files
 /src/Test/
+/publish*.bat
